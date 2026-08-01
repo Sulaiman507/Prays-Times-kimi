@@ -9,10 +9,12 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  cupertino_icons: ^1.0.2
+  cupertino_icons: ^1.0.6
   http: ^1.1.0
   shared_preferences: ^2.2.0
   intl: ^0.18.0
+  flutter_svg: ^2.0.9        # هذا حق الأيقونات الجميلة (ضفته)
+  google_fonts: ^6.1.0       # وهذا حق الخطوط الراقية (ضفته)
 
 dev_dependencies:
   flutter_test:
