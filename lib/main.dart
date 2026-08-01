@@ -3,12 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 
-void main() {
-  runApp(const MyApp());
-}
+void main() => runApp(const MyApp());
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -21,13 +17,11 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
         useMaterial3: true,
-        fontFamily: kIsWeb ? 'Cairo' : GoogleFonts.cairo().fontFamily,
       ),
       darkTheme: ThemeData(
         brightness: Brightness.dark,
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal, brightness: Brightness.dark),
         useMaterial3: true,
-        fontFamily: kIsWeb ? 'Cairo' : GoogleFonts.cairo().fontFamily,
       ),
       themeMode: ThemeMode.system,
       home: const PrayerTimesScreen(),
@@ -53,14 +47,16 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
   String? nextPrayer;
   Duration? timeUntilNext;
 
-  final List<String> prayerNames = [
-    'Fajr', 'Sunrise', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'
-  ];
-  final List<String> prayerNamesAr = [
-    'الفجر', 'الشروق', 'الظهر', 'العصر', 'المغرب', 'العشاء'
-  ];
-  final List<String> prayerIcons = [
-    '🌙', '☀️', '🌤️', '🌅', '🌇', '🌃'
+  final List<String> prayerNames = ['Fajr', 'Sunrise', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'];
+  final List<String> prayerNamesAr = ['الفجر', 'الشروق', 'الظهر', 'العصر', 'المغرب', 'العشاء'];
+  final List<String> prayerIcons = ['🌙', '☀️', '🌤️', '🌅', '🌇', '🌃'];
+  final List<Color> prayerColors = [
+    Colors.deepPurple,
+    Colors.orange,
+    Colors.blue,
+    Colors.red,
+    Colors.green,
+    Colors.indigo,
   ];
 
   @override
@@ -133,7 +129,6 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
   void _calculateNextPrayer() {
     if (prayerTimes == null) return;
     final now = DateTime.now();
-
     List<Map<String, dynamic>> times = [];
     for (var name in prayerNames) {
       final timeStr = prayerTimes![name] ?? '00:00';
@@ -143,9 +138,7 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
       final dt = DateTime(now.year, now.month, now.day, hour, minute);
       times.add({'name': name, 'time': dt});
     }
-
     times.sort((a, b) => a['time'].compareTo(b['time']));
-
     String? nextName;
     Duration? minDiff;
     for (var t in times) {
@@ -156,7 +149,6 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
         nextName = t['name'];
       }
     }
-
     if (nextName == null && times.isNotEmpty) {
       final fajr = times.firstWhere((t) => t['name'] == 'Fajr', orElse: () => times.first);
       final tomorrow = DateTime(now.year, now.month, now.day + 1);
@@ -165,7 +157,6 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
       minDiff = fajrTomorrow.difference(now);
       nextName = fajr['name'];
     }
-
     setState(() {
       nextPrayer = nextName;
       timeUntilNext = minDiff;
@@ -268,6 +259,9 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgGradient = isDark
+        ? [Colors.grey[900]!, Colors.grey[800]!]
+        : [Colors.blue[900]!, Colors.teal[700]!];
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -304,9 +298,7 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: isDark
-                ? [Colors.grey[900]!, Colors.grey[800]!]
-                : [Colors.blue[900]!, Colors.teal[700]!],
+            colors: bgGradient,
           ),
         ),
         child: isLoading
@@ -320,89 +312,14 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
                       padding: const EdgeInsets.only(top: 80, left: 16, right: 16, bottom: 16),
                       children: [
                         if (nextPrayer != null && timeUntilNext != null)
-                          Container(
-                            padding: const EdgeInsets.all(20),
-                            margin: const EdgeInsets.only(bottom: 20),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: Colors.white.withOpacity(0.3)),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.1),
-                                  blurRadius: 10,
-                                  spreadRadius: 2,
-                                ),
-                              ],
-                            ),
-                            child: Column(
-                              children: [
-                                Text(
-                                  '⏳ متبقي على ${prayerNamesAr[prayerNames.indexOf(nextPrayer!)]}',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  _formatDuration(timeUntilNext!),
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 32,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
+                          _buildNextPrayerCard(),
                         ...List.generate(prayerNames.length, (index) {
                           final key = prayerNames[index];
                           final time = prayerTimes![key] ?? '--:--';
                           final isCurrent = nextPrayer == key;
-
-                          return Card(
-                            elevation: isCurrent ? 8 : 2,
-                            margin: const EdgeInsets.only(bottom: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            color: isCurrent
-                                ? Colors.amber.withOpacity(0.3)
-                                : Colors.white.withOpacity(0.15),
-                            child: ListTile(
-                              leading: CircleAvatar(
-                                backgroundColor: isCurrent ? Colors.amber : Colors.teal,
-                                child: Text(
-                                  prayerIcons[index],
-                                  style: const TextStyle(fontSize: 22),
-                                ),
-                              ),
-                              title: Text(
-                                prayerNamesAr[index],
-                                style: const TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
-                              ),
-                              subtitle: Text(
-                                key,
-                                style: const TextStyle(color: Colors.white70),
-                              ),
-                              trailing: Text(
-                                time,
-                                style: const TextStyle(
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
-                          );
+                          return _buildPrayerCard(index, key, time, isCurrent);
                         }),
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 80),
                       ],
                     ),
                   ),
@@ -411,6 +328,110 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
         onPressed: addToFavorites,
         backgroundColor: Colors.teal,
         child: const Icon(Icons.favorite_border, color: Colors.white),
+      ),
+    );
+  }
+
+  Widget _buildNextPrayerCard() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      margin: const EdgeInsets.only(bottom: 20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Colors.amber, Colors.orange],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 12,
+            spreadRadius: 2,
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Text(
+            '⏳ متبقي على ${prayerNamesAr[prayerNames.indexOf(nextPrayer!)]}',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _formatDuration(timeUntilNext!),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 38,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPrayerCard(int index, String key, String time, bool isCurrent) {
+    return Card(
+      elevation: isCurrent ? 12 : 4,
+      margin: const EdgeInsets.only(bottom: 16),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+      ),
+      color: isCurrent
+          ? Colors.amber.withOpacity(0.25)
+          : Colors.white.withOpacity(0.12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 28,
+              backgroundColor: isCurrent
+                  ? Colors.amber
+                  : prayerColors[index % prayerColors.length].withOpacity(0.8),
+              child: Text(
+                prayerIcons[index],
+                style: const TextStyle(fontSize: 28),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    prayerNamesAr[index],
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: isCurrent ? Colors.amber[300] : Colors.white,
+                    ),
+                  ),
+                  Text(
+                    key,
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Text(
+              time,
+              style: const TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
