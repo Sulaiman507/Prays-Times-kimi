@@ -1,8 +1,4 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:intl/intl.dart';
 
 void main() => runApp(const MyApp());
 
@@ -14,433 +10,85 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'مواقيت الصلاة',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
-        useMaterial3: true,
-      ),
-      darkTheme: ThemeData(
-        brightness: Brightness.dark,
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal, brightness: Brightness.dark),
-        useMaterial3: true,
-      ),
-      themeMode: ThemeMode.system,
+      theme: ThemeData(useMaterial3: true, colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal)),
       home: const PrayerTimesScreen(),
     );
   }
 }
 
-class PrayerTimesScreen extends StatefulWidget {
+class PrayerTimesScreen extends StatelessWidget {
   const PrayerTimesScreen({super.key});
 
   @override
-  State<PrayerTimesScreen> createState() => _PrayerTimesScreenState();
-}
-
-class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
-  Map<String, dynamic>? prayerTimes;
-  Map<String, dynamic>? fullData;
-  bool isLoading = true;
-  String city = 'Makkah';
-  String country = 'SA';
-  final TextEditingController cityController = TextEditingController();
-  List<String> favorites = [];
-  String? nextPrayer;
-  Duration? timeUntilNext;
-
-  final List<String> prayerNames = ['Fajr', 'Sunrise', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'];
-  final List<String> prayerNamesAr = ['الفجر', 'الشروق', 'الظهر', 'العصر', 'المغرب', 'العشاء'];
-  final List<String> prayerIcons = ['🌙', '☀️', '🌤️', '🌅', '🌇', '🌃'];
-  final List<Color> prayerColors = [
-    Colors.deepPurple,
-    Colors.orange,
-    Colors.blue,
-    Colors.red,
-    Colors.green,
-    Colors.indigo,
-  ];
-
-  @override
-  void initState() {
-    super.initState();
-    loadFavorites();
-    loadSavedPrayerTimes();
-  }
-
-  Future<void> loadFavorites() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      favorites = prefs.getStringList('favorites') ?? [];
-    });
-  }
-
-  Future<void> loadSavedPrayerTimes() async {
-    final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getString('prayer_times');
-    final savedCity = prefs.getString('city') ?? 'Makkah';
-    final savedCountry = prefs.getString('country') ?? 'SA';
-    final savedFull = prefs.getString('full_data');
-
-    if (saved != null) {
-      setState(() {
-        prayerTimes = jsonDecode(saved);
-        city = savedCity;
-        country = savedCountry;
-        isLoading = false;
-        if (savedFull != null) fullData = jsonDecode(savedFull);
-        _calculateNextPrayer();
-      });
-    } else {
-      fetchPrayerTimes();
-    }
-  }
-
-  Future<void> fetchPrayerTimes() async {
-    setState(() => isLoading = true);
-    try {
-      final url = Uri.parse(
-        'https://api.aladhan.com/v1/timingsByCity?city=$city&country=$country&method=2'
-      );
-      final response = await http.get(url);
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final timings = data['data']['timings'];
-
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('prayer_times', jsonEncode(timings));
-        await prefs.setString('full_data', jsonEncode(data['data']));
-        await prefs.setString('city', city);
-        await prefs.setString('country', country);
-
-        setState(() {
-          prayerTimes = timings;
-          fullData = data['data'];
-          isLoading = false;
-          _calculateNextPrayer();
-        });
-      }
-    } catch (e) {
-      setState(() => isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('خطأ في الاتصال: $e')),
-      );
-    }
-  }
-
-  void _calculateNextPrayer() {
-    if (prayerTimes == null) return;
-    final now = DateTime.now();
-    List<Map<String, dynamic>> times = [];
-    for (var name in prayerNames) {
-      final timeStr = prayerTimes![name] ?? '00:00';
-      final parts = timeStr.split(':');
-      final hour = int.parse(parts[0]);
-      final minute = int.parse(parts[1]);
-      final dt = DateTime(now.year, now.month, now.day, hour, minute);
-      times.add({'name': name, 'time': dt});
-    }
-    times.sort((a, b) => a['time'].compareTo(b['time']));
-    String? nextName;
-    Duration? minDiff;
-    for (var t in times) {
-      final diff = t['time'].difference(now);
-      if (diff.isNegative) continue;
-      if (minDiff == null || diff < minDiff) {
-        minDiff = diff;
-        nextName = t['name'];
-      }
-    }
-    if (nextName == null && times.isNotEmpty) {
-      final fajr = times.firstWhere((t) => t['name'] == 'Fajr', orElse: () => times.first);
-      final tomorrow = DateTime(now.year, now.month, now.day + 1);
-      final fajrTomorrow = DateTime(tomorrow.year, tomorrow.month, tomorrow.day,
-          fajr['time'].hour, fajr['time'].minute);
-      minDiff = fajrTomorrow.difference(now);
-      nextName = fajr['name'];
-    }
-    setState(() {
-      nextPrayer = nextName;
-      timeUntilNext = minDiff;
-    });
-  }
-
-  Future<void> addToFavorites() async {
-    final key = '$city, $country';
-    if (!favorites.contains(key)) {
-      setState(() => favorites.add(key));
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setStringList('favorites', favorites);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تمت الإضافة للمفضلة')),
-      );
-    }
-  }
-
-  void searchCity() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('البحث عن مدينة'),
-        content: TextField(
-          controller: cityController,
-          decoration: const InputDecoration(
-            hintText: 'اسم المدينة (مثال: Riyadh)',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('إلغاء'),
-          ),
-          TextButton(
-            onPressed: () {
-              if (cityController.text.isNotEmpty) {
-                setState(() {
-                  city = cityController.text;
-                  country = 'SA';
-                });
-                fetchPrayerTimes();
-                Navigator.pop(context);
-              }
-            },
-            child: const Text('بحث'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void showFavorites() {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'المفضلة',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-            if (favorites.isEmpty)
-              const Text('لا توجد مدن مفضلة')
-            else
-              ...favorites.map((fav) {
-                final parts = fav.split(', ');
-                return ListTile(
-                  title: Text(parts[0]),
-                  subtitle: Text(parts[1]),
-                  onTap: () {
-                    setState(() {
-                      city = parts[0];
-                      country = parts[1];
-                    });
-                    fetchPrayerTimes();
-                    Navigator.pop(context);
-                  },
-                  trailing: IconButton(
-                    icon: const Icon(Icons.delete, color: Colors.red),
-                    onPressed: () async {
-                      setState(() => favorites.remove(fav));
-                      final prefs = await SharedPreferences.getInstance();
-                      await prefs.setStringList('favorites', favorites);
-                      Navigator.pop(context);
-                      showFavorites();
-                    },
-                  ),
-                );
-              }),
-          ],
-        ),
-      ),
-    );
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgGradient = isDark
-        ? [Colors.grey[900]!, Colors.grey[800]!]
-        : [Colors.blue[900]!, Colors.teal[700]!];
+    // بيانات وهمية ثابتة (دون الحاجة لإنترنت)
+    final Map<String, String> prayerTimes = {
+      'Fajr': '04:31',
+      'Sunrise': '05:54',
+      'Dhuhr': '12:27',
+      'Asr': '15:46',
+      'Maghrib': '19:00',
+      'Isha': '20:30',
+    };
+    final List<String> prayerNamesAr = ['الفجر', 'الشروق', 'الظهر', 'العصر', 'المغرب', 'العشاء'];
+    final List<String> prayerNames = ['Fajr', 'Sunrise', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'];
+    final List<String> icons = ['🌙', '☀️', '🌤️', '🌅', '🌇', '🌃'];
 
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: Column(
-          children: [
-            Text(
-              'مواقيت الصلاة - $city',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
-            ),
-            if (fullData != null)
-              Text(
-                '${fullData!['gregorian']['date']} - ${fullData!['hijri']['date']}',
-                style: const TextStyle(fontSize: 12, color: Colors.white70),
-              ),
-          ],
-        ),
-        centerTitle: true,
+        title: const Text('مواقيت الصلاة - مكة', style: TextStyle(color: Colors.white)),
         backgroundColor: Colors.transparent,
         elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.favorite, color: Colors.white),
-            onPressed: showFavorites,
-          ),
-          IconButton(
-            icon: const Icon(Icons.search, color: Colors.white),
-            onPressed: searchCity,
-          ),
-        ],
+        centerTitle: true,
       ),
       body: Container(
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: bgGradient,
+            colors: [Colors.blue, Colors.teal],
           ),
         ),
-        child: isLoading
-            ? const Center(child: CircularProgressIndicator(color: Colors.white))
-            : prayerTimes == null
-                ? const Center(child: Text('لا توجد بيانات', style: TextStyle(color: Colors.white)))
-                : RefreshIndicator(
-                    onRefresh: fetchPrayerTimes,
-                    color: Colors.teal,
-                    child: ListView(
-                      padding: const EdgeInsets.only(top: 80, left: 16, right: 16, bottom: 16),
-                      children: [
-                        if (nextPrayer != null && timeUntilNext != null)
-                          _buildNextPrayerCard(),
-                        ...List.generate(prayerNames.length, (index) {
-                          final key = prayerNames[index];
-                          final time = prayerTimes![key] ?? '--:--';
-                          final isCurrent = nextPrayer == key;
-                          return _buildPrayerCard(index, key, time, isCurrent);
-                        }),
-                        const SizedBox(height: 80),
-                      ],
-                    ),
-                  ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: addToFavorites,
-        backgroundColor: Colors.teal,
-        child: const Icon(Icons.favorite_border, color: Colors.white),
-      ),
-    );
-  }
-
-  Widget _buildNextPrayerCard() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      margin: const EdgeInsets.only(bottom: 20),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Colors.amber, Colors.orange],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.2),
-            blurRadius: 12,
-            spreadRadius: 2,
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Text(
-            '⏳ متبقي على ${prayerNamesAr[prayerNames.indexOf(nextPrayer!)]}',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            _formatDuration(timeUntilNext!),
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 38,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPrayerCard(int index, String key, String time, bool isCurrent) {
-    return Card(
-      elevation: isCurrent ? 12 : 4,
-      margin: const EdgeInsets.only(bottom: 16),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-      ),
-      color: isCurrent
-          ? Colors.amber.withOpacity(0.25)
-          : Colors.white.withOpacity(0.12),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
-        child: Row(
+        child: ListView(
+          padding: const EdgeInsets.only(top: 80, left: 16, right: 16),
           children: [
-            CircleAvatar(
-              radius: 28,
-              backgroundColor: isCurrent
-                  ? Colors.amber
-                  : prayerColors[index % prayerColors.length].withOpacity(0.8),
-              child: Text(
-                prayerIcons[index],
-                style: const TextStyle(fontSize: 28),
+            // عداد وهمي
+            Container(
+              padding: const EdgeInsets.all(20),
+              margin: const EdgeInsets.only(bottom: 20),
+              decoration: BoxDecoration(
+                color: Colors.amber.withOpacity(0.8),
+                borderRadius: BorderRadius.circular(20),
               ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: const Column(
                 children: [
-                  Text(
-                    prayerNamesAr[index],
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: isCurrent ? Colors.amber[300] : Colors.white,
-                    ),
-                  ),
-                  Text(
-                    key,
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 14,
-                    ),
-                  ),
+                  Text('⏳ متبقي على العصر', style: TextStyle(color: Colors.white, fontSize: 18)),
+                  SizedBox(height: 8),
+                  Text('03:25:12', style: TextStyle(color: Colors.white, fontSize: 34, fontWeight: FontWeight.bold)),
                 ],
               ),
             ),
-            Text(
-              time,
-              style: const TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
+            // قائمة الصلوات
+            ...List.generate(6, (index) {
+              return Card(
+                margin: const EdgeInsets.only(bottom: 12),
+                color: Colors.white.withOpacity(0.2),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: Colors.teal,
+                    child: Text(icons[index], style: const TextStyle(fontSize: 22)),
+                  ),
+                  title: Text(prayerNamesAr[index], style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                  subtitle: Text(prayerNames[index], style: const TextStyle(color: Colors.white70)),
+                  trailing: Text(prayerTimes[prayerNames[index]]!, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+                ),
+              );
+            }),
           ],
         ),
       ),
     );
-  }
-
-  String _formatDuration(Duration d) {
-    String twoDigits(int n) => n.toString().padLeft(2, '0');
-    String hours = twoDigits(d.inHours);
-    String minutes = twoDigits(d.inMinutes.remainder(60));
-    String seconds = twoDigits(d.inSeconds.remainder(60));
-    return '$hours:$minutes:$seconds';
   }
 }
