@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 void main() {
   runApp(const MyApp());
@@ -20,13 +21,13 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
         useMaterial3: true,
-        fontFamily: GoogleFonts.cairo().fontFamily,
+        fontFamily: kIsWeb ? 'Cairo' : GoogleFonts.cairo().fontFamily,
       ),
       darkTheme: ThemeData(
         brightness: Brightness.dark,
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal, brightness: Brightness.dark),
         useMaterial3: true,
-        fontFamily: GoogleFonts.cairo().fontFamily,
+        fontFamily: kIsWeb ? 'Cairo' : GoogleFonts.cairo().fontFamily,
       ),
       themeMode: ThemeMode.system,
       home: const PrayerTimesScreen(),
@@ -101,13 +102,12 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
     setState(() => isLoading = true);
     try {
       final url = Uri.parse(
-        'https://api.aladhan.com/v1/timingsByCity?city=$city&country=$country&method=4'
+        'https://api.aladhan.com/v1/timingsByCity?city=$city&country=$country&method=2'
       );
       final response = await http.get(url);
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final timings = data['data']['timings'];
-        final dateData = data['data']['date'];
 
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('prayer_times', jsonEncode(timings));
@@ -133,7 +133,6 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
   void _calculateNextPrayer() {
     if (prayerTimes == null) return;
     final now = DateTime.now();
-    final currentTime = DateFormat('HH:mm').format(now);
 
     List<Map<String, dynamic>> times = [];
     for (var name in prayerNames) {
