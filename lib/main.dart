@@ -432,32 +432,46 @@ class PrayerApiService {
     }
   }
 
+  // استخدام OpenStreetMap Nominatim لضمان نتائج بحث سريعة ودقيقة باللغتين
   static Future<List<City>> searchCity(String query) async {
     if (query.trim().length < 2) return [];
     final encodedQuery = Uri.encodeQueryComponent(query.trim());
+    
     final url =
-        'https://api.aladhan.com/v1/cities?country=&state=&q=$encodedQuery&limit=10';
+        'https://nominatim.openstreetmap.org/search?q=$encodedQuery&format=json&addressdetails=1&accept-language=ar,en&limit=10';
 
     try {
-      final response = await _client
-          .get(Uri.parse(url))
-          .timeout(const Duration(seconds: 15));
+      final response = await _client.get(
+        Uri.parse(url),
+        headers: {
+          'User-Agent': 'PrayerTimesApp/1.0',
+        },
+      ).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        final cities = data['data'] as List<dynamic>? ?? [];
-        return cities.map((c) {
-          final cityMap = c as Map<String, dynamic>;
-          return City(
-            name: (cityMap['name'] ?? '').toString(),
-            country: (cityMap['country'] ?? '').toString(),
-            lat: City._parseDouble(cityMap['latitude']) ?? 0.0,
-            lng: City._parseDouble(cityMap['longitude']) ?? 0.0,
-          );
-        }).toList();
+        final List<dynamic> results = jsonDecode(response.body);
+        final List<City> cities = [];
+
+        for (var item in results) {
+          final address = item['address'] as Map<String, dynamic>? ?? {};
+          
+          final cityName = address['city'] ?? 
+                           address['town'] ?? 
+                           address['state'] ?? 
+                           address['municipality'] ?? 
+                           item['display_name'].toString().split(',').first;
+                           
+          final countryName = address['country'] ?? '';
+
+          cities.add(City(
+            name: cityName.toString(),
+            country: countryName.toString(),
+            lat: City._parseDouble(item['lat']) ?? 0.0,
+            lng: City._parseDouble(item['lon']) ?? 0.0,
+          ));
+        }
+        return cities;
       }
-      return [];
-    } on TimeoutException {
       return [];
     } catch (_) {
       return [];
@@ -1016,19 +1030,16 @@ class SettingsScreen extends StatelessWidget {
 // Search Delegate
 // ============================
 class CitySearchDelegate extends SearchDelegate<City?> {
-  Timer? _debounce;
-  String? _lastQuery;
-  Future<List<City>>? _searchFuture;
-
   @override
   List<Widget>? buildActions(BuildContext context) => [
-        IconButton(
-          icon: const Icon(Icons.clear),
-          onPressed: () {
-            query = '';
-            _searchFuture = null;
-          },
-        ),
+        if (query.isNotEmpty)
+          IconButton(
+            icon: const Icon(Icons.clear),
+            onPressed: () {
+              query = '';
+              showSuggestions(context);
+            },
+          ),
       ];
 
   @override
@@ -1038,24 +1049,12 @@ class CitySearchDelegate extends SearchDelegate<City?> {
       );
 
   @override
-  Widget buildResults(BuildContext context) => _buildList(context);
+  Widget buildResults(BuildContext context) => _buildSearchResults(context);
 
   @override
-  Widget buildSuggestions(BuildContext context) => _buildList(context);
+  Widget buildSuggestions(BuildContext context) => _buildSearchResults(context);
 
-  void _onQueryChanged(String value) {
-    if (_debounce?.isActive ?? false) _debounce!.cancel();
-    _debounce = Timer(const Duration(milliseconds: 500), () {
-      if (value.trim().length >= 2) {
-        _lastQuery = value.trim();
-        _searchFuture = PrayerApiService.searchCity(_lastQuery!);
-      } else {
-        _searchFuture = null;
-      }
-    });
-  }
-
-  Widget _buildList(BuildContext context) {
+  Widget _buildSearchResults(BuildContext context) {
     if (query.trim().length < 2) {
       return Center(
         child: Text(
@@ -1065,12 +1064,8 @@ class CitySearchDelegate extends SearchDelegate<City?> {
       );
     }
 
-    if (_lastQuery != query.trim()) {
-      _onQueryChanged(query);
-    }
-
     return FutureBuilder<List<City>>(
-      future: _searchFuture,
+      future: PrayerApiService.searchCity(query),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(
@@ -1078,7 +1073,7 @@ class CitySearchDelegate extends SearchDelegate<City?> {
           );
         }
 
-        if (snapshot.hasError) {
+        if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
           return Center(
             child: Text(
               Lang.t(context, 'noCitiesFound'),
@@ -1087,23 +1082,16 @@ class CitySearchDelegate extends SearchDelegate<City?> {
           );
         }
 
-        final cities = snapshot.data ?? [];
-        if (cities.isEmpty) {
-          return Center(
-            child: Text(
-              Lang.t(context, 'noCitiesFound'),
-              style: const TextStyle(color: Colors.white70),
-            ),
-          );
-        }
+        final cities = snapshot.data!;
 
         return ListView.builder(
           itemCount: cities.length,
           itemBuilder: (context, index) {
             final city = cities[index];
             return ListTile(
-              title: Text(city.name, style: const TextStyle(color: Colors.white)),
+              title: Text(city.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
               subtitle: Text(city.country, style: const TextStyle(color: Colors.white70)),
+              leading: const Icon(Icons.location_city, color: AppColors.primary),
               onTap: () => close(context, city),
             );
           },
