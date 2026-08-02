@@ -497,7 +497,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(width: 8),
                 Text(
                   _formatDuration(_timeRemaining),
-                  style: GoogleFonts.mono(
+                  style: GoogleFonts.robotoMono(
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
