@@ -76,7 +76,6 @@ class _AppLocalizationsDelegate
   bool shouldReload(_AppLocalizationsDelegate old) => false;
 }
 
-// Inline translations fallback
 class Lang {
   static const Map<String, Map<String, String>> texts = {
     'en': {
@@ -446,7 +445,6 @@ class PrayerApiService {
 
   static Future<PrayerTimes?> fetchPrayerTimes(City city) async {
     final date = DateFormat('dd-MM-yyyy').format(DateTime.now());
-    // طريقة الحساب (method=4) تعني جامعة أم القرى بمكة المكرمة
     final url =
         'https://api.aladhan.com/v1/timings/$date?latitude=${city.lat}&longitude=${city.lng}&method=4';
 
@@ -540,9 +538,13 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void initState() {
     super.initState();
+    
+    // طلب الصلاحيات فور فتح الصفحة الرئيسية
+    NotificationService.requestPermissions();
+
     loadInitialData();
     
-    // التحديث التلقائي كل دقيقة لضمان انتقال مؤشر الصلاة القادمة تلقائياً
+    // التحديث التلقائي كل دقيقة
     _timer = Timer.periodic(const Duration(minutes: 1), (_) {
       if (mounted) {
         setState(() {});
@@ -644,6 +646,11 @@ class _HomeScreenState extends State<HomeScreen>
             body: '${Lang.t(context, 'athanBody')} ${p.name}',
             scheduledTime: scheduledDateTime,
           );
+        }
+        
+        // جدولة الجمعة إذا صادف وقت الظهر
+        if (p.id == 2) {
+          NotificationService.scheduleFridayReminder(scheduledDateTime);
         }
       }
     }
