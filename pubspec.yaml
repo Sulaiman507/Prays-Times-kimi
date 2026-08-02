@@ -26,9 +26,9 @@ dependencies:
   # Beautiful Fonts
   google_fonts: ^6.1.0
 
-  # Location (اختياري - لاحقًا)
-  # geolocator: ^11.0.0
-  # geocoding: ^3.0.0
+  # Notifications & Timezone
+  flutter_local_notifications: ^17.1.2
+  timezone: ^0.9.3
 
 dev_dependencies:
   flutter_test:
