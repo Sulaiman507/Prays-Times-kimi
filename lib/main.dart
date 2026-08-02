@@ -101,6 +101,8 @@ class Lang {
       'hours24': '24 Hours',
       'am': 'AM',
       'pm': 'PM',
+      'athan': 'Athan',
+      'iqamah': 'Iqamah',
     },
     'ar': {
       'appName': 'مواقيت الصلاة',
@@ -129,6 +131,8 @@ class Lang {
       'hours24': '24 ساعة',
       'am': 'ص',
       'pm': 'م',
+      'athan': 'الأذان',
+      'iqamah': 'الإقامة',
     },
   };
 
@@ -419,7 +423,7 @@ class StorageService {
 
   static Future<bool> getIs24Hour() async {
     final prefs = await _instance;
-    return prefs.getBool(_timeFormat24Key) ?? true; // الافتراضي 24 ساعة
+    return prefs.getBool(_timeFormat24Key) ?? false;
   }
 }
 
@@ -456,7 +460,7 @@ class PrayerApiService {
   static Future<List<City>> searchCity(String query) async {
     if (query.trim().length < 2) return [];
     final encodedQuery = Uri.encodeQueryComponent(query.trim());
-    
+
     final url =
         'https://nominatim.openstreetmap.org/search?q=$encodedQuery&format=json&addressdetails=1&accept-language=ar,en&limit=10';
 
@@ -474,13 +478,13 @@ class PrayerApiService {
 
         for (var item in results) {
           final address = item['address'] as Map<String, dynamic>? ?? {};
-          
-          final cityName = address['city'] ?? 
-                           address['town'] ?? 
-                           address['state'] ?? 
-                           address['municipality'] ?? 
-                           item['display_name'].toString().split(',').first;
-                           
+
+          final cityName = address['city'] ??
+              address['town'] ??
+              address['state'] ??
+              address['municipality'] ??
+              item['display_name'].toString().split(',').first;
+
           final countryName = address['country'] ?? '';
 
           cities.add(City(
@@ -515,7 +519,7 @@ class _HomeScreenState extends State<HomeScreen>
   PrayerTimes? prayerTimes;
   List<City> favorites = [];
   bool isLoading = true;
-  bool is24Hour = true;
+  bool is24Hour = false;
   String? error;
   int selectedNavIndex = 0;
 
@@ -615,6 +619,24 @@ class _HomeScreenState extends State<HomeScreen>
 
     final formattedHour = hour.toString().padLeft(2, '0');
     return '$formattedHour:$minute $period';
+  }
+
+  // حساب وقت الإقامة بإضافة دقائق محددة للأذان
+  String _calculateIqamah(String rawAthanTime, int offsetMinutes) {
+    if (rawAthanTime == '--:--') return '--:--';
+    final clean = PrayerTimes._extractTime(rawAthanTime);
+    final parts = clean.split(':');
+    if (parts.length < 2) return '--:--';
+
+    int hour = int.tryParse(parts[0]) ?? 0;
+    int minute = int.tryParse(parts[1]) ?? 0;
+
+    DateTime now = DateTime.now();
+    DateTime athanDateTime = DateTime(now.year, now.month, now.day, hour, minute);
+    DateTime iqamahDateTime = athanDateTime.add(Duration(minutes: offsetMinutes));
+
+    final formattedRaw = DateFormat('HH:mm').format(iqamahDateTime);
+    return _formatTime(formattedRaw);
   }
 
   TimeOfDay? _parseTime(String time) {
@@ -887,13 +909,14 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget _buildPrayersGrid(PrayerTimes pt) {
+    // فارق وقت الإقامة لكل صلاة (بالدقائق)
     final prayers = [
-      (key: 'fajr', name: Lang.t(context, 'fajr'), time: pt.fajr, icon: Icons.wb_twilight),
-      (key: 'sunrise', name: Lang.t(context, 'sunrise'), time: pt.sunrise, icon: Icons.wb_sunny_outlined),
-      (key: 'dhuhr', name: Lang.t(context, 'dhuhr'), time: pt.dhuhr, icon: Icons.sunny),
-      (key: 'asr', name: Lang.t(context, 'asr'), time: pt.asr, icon: Icons.cloud),
-      (key: 'maghrib', name: Lang.t(context, 'maghrib'), time: pt.maghrib, icon: Icons.nights_stay_outlined),
-      (key: 'isha', name: Lang.t(context, 'isha'), time: pt.isha, icon: Icons.brightness_3),
+      (key: 'fajr', name: Lang.t(context, 'fajr'), time: pt.fajr, icon: Icons.wb_twilight, iqamahOffset: 25, isPrayer: true),
+      (key: 'sunrise', name: Lang.t(context, 'sunrise'), time: pt.sunrise, icon: Icons.wb_sunny_outlined, iqamahOffset: 0, isPrayer: false),
+      (key: 'dhuhr', name: Lang.t(context, 'dhuhr'), time: pt.dhuhr, icon: Icons.sunny, iqamahOffset: 20, isPrayer: true),
+      (key: 'asr', name: Lang.t(context, 'asr'), time: pt.asr, icon: Icons.cloud, iqamahOffset: 20, isPrayer: true),
+      (key: 'maghrib', name: Lang.t(context, 'maghrib'), time: pt.maghrib, icon: Icons.nights_stay_outlined, iqamahOffset: 10, isPrayer: true),
+      (key: 'isha', name: Lang.t(context, 'isha'), time: pt.isha, icon: Icons.brightness_3, iqamahOffset: 20, isPrayer: true),
     ];
 
     return GridView.builder(
@@ -901,20 +924,25 @@ class _HomeScreenState extends State<HomeScreen>
       physics: const NeverScrollableScrollPhysics(),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
-        childAspectRatio: 1.1,
+        childAspectRatio: 0.9,
         crossAxisSpacing: 14,
         mainAxisSpacing: 14,
       ),
       itemCount: prayers.length,
       itemBuilder: (context, index) {
         final p = prayers[index];
+        final isNext = p.key == getNextPrayerKey();
+
         return Container(
           decoration: BoxDecoration(
             color: AppColors.surface,
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: Colors.white.withOpacity(0.05)),
+            border: Border.all(
+              color: isNext ? AppColors.secondary.withOpacity(0.5) : Colors.white.withOpacity(0.05),
+              width: isNext ? 1.5 : 1,
+            ),
           ),
-          padding: const EdgeInsets.all(18),
+          padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -922,10 +950,10 @@ class _HomeScreenState extends State<HomeScreen>
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Icon(p.icon, color: AppColors.primary, size: 28),
-                  if (p.key == getNextPrayerKey())
+                  Icon(p.icon, color: AppColors.primary, size: 26),
+                  if (isNext)
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
                         color: AppColors.secondary.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(20),
@@ -941,21 +969,55 @@ class _HomeScreenState extends State<HomeScreen>
                     ),
                 ],
               ),
+              Text(
+                p.name,
+                style: GoogleFonts.cairo(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+              const Divider(color: Colors.white12, height: 12),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    _formatTime(p.time),
-                    style: GoogleFonts.cairo(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        Lang.t(context, 'athan'),
+                        style: const TextStyle(color: Colors.white60, fontSize: 11),
+                      ),
+                      Text(
+                        _formatTime(p.time),
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (p.isPrayer) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          Lang.t(context, 'iqamah'),
+                          style: const TextStyle(color: Colors.white60, fontSize: 11),
+                        ),
+                        Text(
+                          _calculateIqamah(p.time, p.iqamahOffset),
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                  Text(
-                    p.name,
-                    style: const TextStyle(color: Colors.white70, fontSize: 15),
-                  ),
+                  ],
                 ],
               ),
             ],
