@@ -8,15 +8,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 // ============================
-// App Colors (Green Emerald Theme)
+// App Colors
 // ============================
 class AppColors {
   AppColors._();
 
-  static const Color primaryGreen = Color(0xFF2D7A5D);
-  static const Color darkGreen = Color(0xFF1B4D3E);
-  static const Color lightGreen = Color(0xFFE8F3EE);
-  static const Color background = Color(0xFFF6F8F7);
+  static const Color primaryGreen = Color(0xFF1E664A);
+  static const Color darkGreen = Color(0xFF144733);
+  static const Color lightGreen = Color(0xFFE9F3EE);
+  static const Color background = Color(0xFFF7F9F8);
   static const Color surface = Colors.white;
   static const Color textDark = Color(0xFF1C274C);
   static const Color textMuted = Color(0xFF8C98A8);
@@ -28,46 +28,7 @@ void main() {
 }
 
 // ============================
-// Localization & Helpers
-// ============================
-class Lang {
-  static const Map<String, Map<String, String>> texts = {
-    'en': {
-      'appName': 'Prayer Times',
-      'fajr': 'Fajr',
-      'sunrise': 'Sunrise',
-      'dhuhr': 'Dhuhr',
-      'asr': 'Asr',
-      'maghrib': 'Maghrib',
-      'isha': 'Isha',
-      'searchCity': 'Search city...',
-      'nextPrayer': ' الصلاة القادمة',
-      'todaySchedule': 'جدول اليوم',
-      'noCitiesFound': 'No cities found',
-    },
-    'ar': {
-      'appName': 'مواقيت الصلاة',
-      'fajr': 'الفجر',
-      'sunrise': 'الشروق',
-      'dhuhr': 'الظهر',
-      'asr': 'العصر',
-      'maghrib': 'المغرب',
-      'isha': 'العشاء',
-      'searchCity': 'ابحث عن مدينة...',
-      'nextPrayer': ' الصلاة القادمة',
-      'todaySchedule': 'جدول اليوم',
-      'noCitiesFound': 'لم يتم العثور على مدن',
-    },
-  };
-
-  static String t(BuildContext context, String key) {
-    final locale = Localizations.localeOf(context).languageCode;
-    return texts[locale]?[key] ?? texts['ar']![key] ?? key;
-  }
-}
-
-// ============================
-// Models
+// Models & Helpers
 // ============================
 class City {
   final String name;
@@ -87,16 +48,9 @@ class City {
   factory City.fromJson(Map<String, dynamic> json) => City(
         name: (json['name'] ?? '').toString(),
         country: (json['country'] ?? '').toString(),
-        lat: _parseDouble(json['lat']) ?? 0.0,
-        lng: _parseDouble(json['lng']) ?? 0.0,
+        lat: double.tryParse(json['lat'].toString()) ?? 0.0,
+        lng: double.tryParse(json['lng'].toString()) ?? 0.0,
       );
-
-  static double? _parseDouble(dynamic value) {
-    if (value == null) return null;
-    if (value is double) return value;
-    if (value is int) return value.toDouble();
-    return double.tryParse(value.toString());
-  }
 }
 
 class PrayerTimes {
@@ -130,14 +84,13 @@ class PrayerTimes {
 
   static String _clean(dynamic v) {
     if (v == null) return '00:00';
-    final str = v.toString().trim();
-    final match = RegExp(r'^(\d{1,2}:\d{2})').firstMatch(str);
-    return match?.group(1) ?? str;
+    final match = RegExp(r'^(\d{1,2}:\d{2})').firstMatch(v.toString().trim());
+    return match?.group(1) ?? v.toString().trim();
   }
 }
 
-// Helper formatting 24h string "15:50" -> 12h format {time: "3:50", period: "م"}
 class TimeFormatter {
+  // Format to 12h: "4:34 ص" or "12:30 م"
   static Map<String, String> to12Hour(String time24) {
     try {
       final parts = time24.split(':');
@@ -152,7 +105,6 @@ class TimeFormatter {
     }
   }
 
-  // Calculate Iqama time (+20 mins standard offset for demonstration)
   static String getIqamaTime(String time24) {
     try {
       final parts = time24.split(':');
@@ -174,7 +126,7 @@ class TimeFormatter {
 }
 
 // ============================
-// Storage & API Services
+// Services
 // ============================
 class StorageService {
   static const String _cityKey = 'last_city';
@@ -395,23 +347,24 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           children: [
             _buildTopHeader(),
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    Lang.t(context, 'todaySchedule'),
+                    'جدول اليوم',
                     style: GoogleFonts.cairo(
-                      fontSize: 20,
+                      fontSize: 22,
                       fontWeight: FontWeight.bold,
                       color: AppColors.textDark,
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 14),
                   isLoading
-                      ? const Center(child: Padding(
+                      ? const Center(
+                          child: Padding(
                           padding: EdgeInsets.all(40.0),
                           child: CircularProgressIndicator(color: AppColors.primaryGreen),
                         ))
@@ -434,102 +387,109 @@ class _HomeScreenState extends State<HomeScreen> {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
         ),
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(36)),
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(38)),
       ),
-      padding: const EdgeInsets.fromLTRB(20, 45, 20, 25),
+      padding: const EdgeInsets.fromLTRB(20, 50, 20, 30),
       child: Column(
         children: [
-          // Header Action Row
+          // Header Actions (Location Left, Buttons Right)
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  CircleAvatar(
-                    backgroundColor: Colors.white.withOpacity(0.15),
-                    radius: 18,
-                    child: const Icon(Icons.wb_sunny_outlined, color: Colors.white, size: 18),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Text('English ✨', style: TextStyle(color: Colors.white, fontSize: 12)),
-                  ),
-                ],
-              ),
               GestureDetector(
                 onTap: _openSearch,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.15),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Row(
                     children: [
-                      Text(
-                        '${currentCity.name}\n${currentCity.country}',
-                        textAlign: TextAlign.end,
-                        style: const TextStyle(color: Colors.white, fontSize: 11, height: 1.2),
-                      ),
-                      const SizedBox(width: 6),
                       const Icon(Icons.location_on_outlined, color: Colors.white, size: 18),
+                      const SizedBox(width: 6),
+                      Text(
+                        '${currentCity.name}  ${currentCity.country}',
+                        style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                      ),
                     ],
                   ),
                 ),
               ),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.auto_awesome, color: Colors.amber, size: 14),
+                        SizedBox(width: 4),
+                        Text('English', style: TextStyle(color: Colors.white, fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  CircleAvatar(
+                    backgroundColor: Colors.white.withOpacity(0.15),
+                    radius: 18,
+                    child: const Icon(Icons.wb_sunny_outlined, color: Colors.white, size: 18),
+                  ),
+                ],
+              ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 25),
 
           // Title
-          Text(
-            Lang.t(context, 'nextPrayer'),
-            style: const TextStyle(color: Colors.white70, fontSize: 13),
+          const Text(
+            'الصلاة القادمة',
+            style: TextStyle(color: Colors.white70, fontSize: 14),
           ),
           const SizedBox(height: 2),
 
-          // Next Prayer Name
+          // Prayer Title (Arabic + English)
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
             children: [
-              Text(
-                _nextPrayerEn,
-                style: const TextStyle(color: Colors.white70, fontSize: 22, fontWeight: FontWeight.w300),
-              ),
-              const SizedBox(width: 8),
               Text(
                 _nextPrayerName.isEmpty ? '--' : _nextPrayerName,
                 style: GoogleFonts.cairo(
-                  fontSize: 34,
+                  fontSize: 42,
                   fontWeight: FontWeight.bold,
                   color: Colors.white,
                 ),
               ),
+              const SizedBox(width: 10),
+              Text(
+                _nextPrayerEn,
+                style: const TextStyle(color: Colors.white70, fontSize: 24, fontWeight: FontWeight.w300),
+              ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
 
-          // Countdown Pill
+          // Timer Pill
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 8),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(25),
+              color: Colors.white.withOpacity(0.18),
+              borderRadius: BorderRadius.circular(30),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.nights_stay_outlined, color: Colors.white70, size: 16),
-                const SizedBox(width: 8),
+                const Icon(Icons.nights_stay_outlined, color: Colors.white, size: 18),
+                const SizedBox(width: 10),
                 Text(
                   _formatDuration(_timeRemaining),
                   style: GoogleFonts.robotoMono(
-                    fontSize: 20,
+                    fontSize: 22,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
                   ),
@@ -537,21 +497,21 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
 
           // Time detail
           Text(
             '$_nextPrayerName الساعة $_nextPrayerTime12',
             style: const TextStyle(color: Colors.white70, fontSize: 13),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 18),
 
           // Dates Badges
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               _buildBadge('١٨ صفر ١٤٤٨ هـ'),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
               _buildBadge('السبت ١ أغسطس ٢٠٢٦'),
             ],
           ),
@@ -562,14 +522,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildBadge(String text) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.12),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Text(
         text,
-        style: const TextStyle(color: Colors.white70, fontSize: 11),
+        style: const TextStyle(color: Colors.white70, fontSize: 12),
       ),
     );
   }
@@ -578,12 +538,12 @@ class _HomeScreenState extends State<HomeScreen> {
     if (prayerTimes == null) return const SizedBox();
 
     final prayers = [
-      {'key': 'fajr', 'name': 'الفجر', 'en': 'Fajr', 'time': prayerTimes!.fajr, 'sub': 'فرض', 'icon': Icons.mosque_outlined},
-      {'key': 'sunrise', 'name': 'الشروق', 'en': 'Sunrise', 'time': prayerTimes!.sunrise, 'sub': 'شروق', 'icon': Icons.wb_sunny_outlined},
-      {'key': 'dhuhr', 'name': 'الظهر', 'en': 'Dhuhr', 'time': prayerTimes!.dhuhr, 'sub': 'خلال', 'icon': Icons.wb_sunny},
-      {'key': 'asr', 'name': 'العصر', 'en': 'Asr', 'time': prayerTimes!.asr, 'sub': 'فرض', 'icon': Icons.cloud_outlined},
-      {'key': 'maghrib', 'name': 'المغرب', 'en': 'Maghrib', 'time': prayerTimes!.maghrib, 'sub': 'فرض', 'icon': Icons.wb_twilight},
-      {'key': 'isha', 'name': 'العشاء', 'en': 'Isha', 'time': prayerTimes!.isha, 'sub': 'فرض', 'icon': Icons.nights_stay_outlined},
+      {'key': 'fajr', 'name': 'الفجر', 'en': 'Fajr', 'time': prayerTimes!.fajr, 'icon': Icons.mosque_outlined},
+      {'key': 'sunrise', 'name': 'الشروق', 'en': 'Sunrise', 'time': prayerTimes!.sunrise, 'icon': Icons.wb_sunny_outlined},
+      {'key': 'dhuhr', 'name': 'الظهر', 'en': 'Dhuhr', 'time': prayerTimes!.dhuhr, 'icon': Icons.wb_sunny},
+      {'key': 'asr', 'name': 'العصر', 'en': 'Asr', 'time': prayerTimes!.asr, 'icon': Icons.cloud_outlined},
+      {'key': 'maghrib', 'name': 'المغرب', 'en': 'Maghrib', 'time': prayerTimes!.maghrib, 'icon': Icons.wb_twilight},
+      {'key': 'isha', 'name': 'العشاء', 'en': 'Isha', 'time': prayerTimes!.isha, 'icon': Icons.nights_stay_outlined},
     ];
 
     return ListView.builder(
@@ -597,53 +557,62 @@ class _HomeScreenState extends State<HomeScreen> {
         final iqamaStr = TimeFormatter.getIqamaTime(item['time'] as String);
 
         return Container(
-          margin: const EdgeInsets.only(bottom: 10),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
             color: isNext ? AppColors.primaryGreen : AppColors.surface,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(22),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withOpacity(0.02),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
               ),
             ],
           ),
           child: Row(
             children: [
-              // Notification Bell (Left)
+              // 1. Icon (Left Side)
               CircleAvatar(
-                backgroundColor: isNext ? Colors.white.withOpacity(0.2) : const Color(0xFFEAF3EE),
-                radius: 18,
+                backgroundColor: isNext ? Colors.white.withOpacity(0.2) : AppColors.lightGreen,
+                radius: 20,
                 child: Icon(
-                  Icons.notifications_none_rounded,
+                  item['icon'] as IconData,
                   color: isNext ? Colors.white : AppColors.primaryGreen,
                   size: 20,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 14),
 
-              // Time Block (12 Hours)
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.baseline,
-                textBaseline: TextBaseline.alphabetic,
+              // 2. Name & Iqama Subtitle (Left-Middle)
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Row(
+                    children: [
+                      Text(
+                        item['name'] as String,
+                        style: GoogleFonts.cairo(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: isNext ? Colors.white : AppColors.textDark,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        item['en'] as String,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: isNext ? Colors.white70 : AppColors.textMuted,
+                        ),
+                      ),
+                    ],
+                  ),
                   Text(
-                    t12['period']!,
+                    item['key'] == 'sunrise' ? 'الأذان' : 'الإقامة $iqamaStr',
                     style: TextStyle(
                       fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: isNext ? Colors.white70 : AppColors.textDark,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    t12['time']!,
-                    style: GoogleFonts.robotoMono(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: isNext ? Colors.white : AppColors.textDark,
+                      color: isNext ? Colors.white70 : AppColors.textMuted,
                     ),
                   ),
                 ],
@@ -651,52 +620,38 @@ class _HomeScreenState extends State<HomeScreen> {
 
               const Spacer(),
 
-              // Prayer Name & Subtext
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
+              // 3. Time (Right Side)
+              Row(
+                textBaseline: TextBaseline.alphabetic,
+                crossAxisAlignment: CrossAxisAlignment.baseline,
                 children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        item['en'] as String,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isNext ? Colors.white70 : AppColors.textMuted,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        item['name'] as String,
-                        style: GoogleFonts.cairo(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: isNext ? Colors.white : AppColors.textDark,
-                        ),
-                      ),
-                    ],
-                  ),
                   Text(
-                    item['key'] == 'sunrise'
-                        ? 'الأذان'
-                        : (item['key'] == 'dhuhr' && isNext
-                            ? 'خلال ${_formatDuration(_timeRemaining)} الإقامة $iqamaStr'
-                            : 'الإقامة $iqamaStr'),
+                    t12['time']!,
+                    style: GoogleFonts.robotoMono(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: isNext ? Colors.white : AppColors.textDark,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    t12['period']!,
                     style: TextStyle(
-                      fontSize: 11,
-                      color: isNext ? Colors.white70 : AppColors.textMuted,
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: isNext ? Colors.white : AppColors.textDark,
                     ),
                   ),
                 ],
               ),
               const SizedBox(width: 12),
 
-              // Right Icon
+              // 4. Notification Bell Icon (Far Right)
               CircleAvatar(
-                backgroundColor: isNext ? Colors.white.withOpacity(0.2) : const Color(0xFFEAF3EE),
+                backgroundColor: isNext ? Colors.white.withOpacity(0.2) : AppColors.lightGreen,
                 radius: 18,
                 child: Icon(
-                  item['icon'] as IconData,
+                  Icons.notifications_none_rounded,
                   color: isNext ? Colors.white : AppColors.primaryGreen,
                   size: 18,
                 ),
@@ -739,10 +694,10 @@ class CitySearchDelegate extends SearchDelegate<City?> {
 
   Widget _buildSearchResults(BuildContext context) {
     if (query.trim().length < 2) {
-      return Center(
+      return const Center(
         child: Text(
-          Lang.t(context, 'searchCity'),
-          style: const TextStyle(color: AppColors.textMuted),
+          'ابحث عن مدينة...',
+          style: TextStyle(color: AppColors.textMuted),
         ),
       );
     }
@@ -755,10 +710,10 @@ class CitySearchDelegate extends SearchDelegate<City?> {
         }
 
         if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
-          return Center(
+          return const Center(
             child: Text(
-              Lang.t(context, 'noCitiesFound'),
-              style: const TextStyle(color: AppColors.textMuted),
+              'لم يتم العثور على مدن',
+              style: TextStyle(color: AppColors.textMuted),
             ),
           );
         }
