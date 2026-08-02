@@ -16,8 +16,7 @@ class AppColors {
   static const Color primaryGreen = Color(0xFF2D7A5D);
   static const Color darkGreen = Color(0xFF1B4D3E);
   static const Color lightGreen = Color(0xFFE8F3EE);
-  static const Color accentGreen = Color(0xFF34C759);
-  static const Color background = Color(0xFFF4F7F5);
+  static const Color background = Color(0xFFF6F8F7);
   static const Color surface = Colors.white;
   static const Color textDark = Color(0xFF1C274C);
   static const Color textMuted = Color(0xFF8C98A8);
@@ -42,12 +41,9 @@ class Lang {
       'maghrib': 'Maghrib',
       'isha': 'Isha',
       'searchCity': 'Search city...',
-      'nextPrayer': 'Next Prayer',
-      'todaySchedule': 'Today Schedule',
-      'umAlQura': 'Umm Al-Qura',
+      'nextPrayer': ' الصلاة القادمة',
+      'todaySchedule': 'جدول اليوم',
       'noCitiesFound': 'No cities found',
-      'favorites': 'Favorites',
-      'settings': 'Settings',
     },
     'ar': {
       'appName': 'مواقيت الصلاة',
@@ -58,12 +54,9 @@ class Lang {
       'maghrib': 'المغرب',
       'isha': 'العشاء',
       'searchCity': 'ابحث عن مدينة...',
-      'nextPrayer': 'الصلاة القادمة',
+      'nextPrayer': ' الصلاة القادمة',
       'todaySchedule': 'جدول اليوم',
-      'umAlQura': 'أم القرى',
       'noCitiesFound': 'لم يتم العثور على مدن',
-      'favorites': 'المفضلة',
-      'settings': 'الإعدادات',
     },
   };
 
@@ -113,7 +106,6 @@ class PrayerTimes {
   final String asr;
   final String maghrib;
   final String isha;
-  final String date;
 
   const PrayerTimes({
     required this.fajr,
@@ -122,10 +114,9 @@ class PrayerTimes {
     required this.asr,
     required this.maghrib,
     required this.isha,
-    required this.date,
   });
 
-  factory PrayerTimes.fromApi(Map<String, dynamic> data, String dateStr) {
+  factory PrayerTimes.fromApi(Map<String, dynamic> data) {
     final timings = data['timings'] as Map<String, dynamic>? ?? {};
     return PrayerTimes(
       fajr: _clean(timings['Fajr']),
@@ -134,7 +125,6 @@ class PrayerTimes {
       asr: _clean(timings['Asr']),
       maghrib: _clean(timings['Maghrib']),
       isha: _clean(timings['Isha']),
-      date: dateStr,
     );
   }
 
@@ -143,6 +133,43 @@ class PrayerTimes {
     final str = v.toString().trim();
     final match = RegExp(r'^(\d{1,2}:\d{2})').firstMatch(str);
     return match?.group(1) ?? str;
+  }
+}
+
+// Helper formatting 24h string "15:50" -> 12h format {time: "3:50", period: "م"}
+class TimeFormatter {
+  static Map<String, String> to12Hour(String time24) {
+    try {
+      final parts = time24.split(':');
+      int hour = int.parse(parts[0]);
+      final minute = parts[1];
+      final period = hour >= 12 ? 'م' : 'ص';
+      if (hour > 12) hour -= 12;
+      if (hour == 0) hour = 12;
+      return {'time': '$hour:$minute', 'period': period};
+    } catch (_) {
+      return {'time': time24, 'period': ''};
+    }
+  }
+
+  // Calculate Iqama time (+20 mins standard offset for demonstration)
+  static String getIqamaTime(String time24) {
+    try {
+      final parts = time24.split(':');
+      int hour = int.parse(parts[0]);
+      int minute = int.parse(parts[1]) + 20; // 20 mins offset
+      if (minute >= 60) {
+        minute -= 60;
+        hour += 1;
+      }
+      final period = hour >= 12 ? 'م' : 'ص';
+      if (hour > 12) hour -= 12;
+      if (hour == 0) hour = 12;
+      final minuteStr = minute.toString().padLeft(2, '0');
+      return '$hour:$minuteStr $period';
+    } catch (_) {
+      return '';
+    }
   }
 }
 
@@ -180,7 +207,7 @@ class PrayerApiService {
       final response = await _client.get(Uri.parse(url)).timeout(const Duration(seconds: 12));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        return PrayerTimes.fromApi(data['data'], date);
+        return PrayerTimes.fromApi(data['data']);
       }
     } catch (_) {}
     return null;
@@ -239,7 +266,7 @@ class MyApp extends StatelessWidget {
 }
 
 // ============================
-// Home Screen (New Elegant Layout)
+// Home Screen
 // ============================
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -253,11 +280,11 @@ class _HomeScreenState extends State<HomeScreen> {
   PrayerTimes? prayerTimes;
   bool isLoading = true;
 
-  // Countdown timer variables
   Timer? _timer;
   Duration _timeRemaining = Duration.zero;
   String _nextPrayerName = '';
-  String _nextPrayerTimeStr = '';
+  String _nextPrayerEn = '';
+  String _nextPrayerTime12 = '';
 
   @override
   void initState() {
@@ -303,11 +330,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final now = DateTime.now();
     final prayers = [
-      {'name': Lang.t(context, 'fajr'), 'time': prayerTimes!.fajr},
-      {'name': Lang.t(context, 'dhuhr'), 'time': prayerTimes!.dhuhr},
-      {'name': Lang.t(context, 'asr'), 'time': prayerTimes!.asr},
-      {'name': Lang.t(context, 'maghrib'), 'time': prayerTimes!.maghrib},
-      {'name': Lang.t(context, 'isha'), 'time': prayerTimes!.isha},
+      {'name': 'الفجر', 'en': 'Fajr', 'time': prayerTimes!.fajr},
+      {'name': 'الظهر', 'en': 'Dhuhr', 'time': prayerTimes!.dhuhr},
+      {'name': 'العصر', 'en': 'Asr', 'time': prayerTimes!.asr},
+      {'name': 'المغرب', 'en': 'Maghrib', 'time': prayerTimes!.maghrib},
+      {'name': 'العشاء', 'en': 'Isha', 'time': prayerTimes!.isha},
     ];
 
     for (var p in prayers) {
@@ -316,9 +343,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (pDateTime.isAfter(now)) {
         if (mounted) {
+          final formatted = TimeFormatter.to12Hour(p['time']!);
           setState(() {
             _nextPrayerName = p['name']!;
-            _nextPrayerTimeStr = p['time']!;
+            _nextPrayerEn = p['en']!;
+            _nextPrayerTime12 = '${formatted['time']} ${formatted['period']}';
             _timeRemaining = pDateTime.difference(now);
           });
         }
@@ -326,13 +355,14 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
-    // If all prayers passed today, target tomorrow Fajr
     final parts = prayerTimes!.fajr.split(':');
     final tomorrowFajr = DateTime(now.year, now.month, now.day + 1, int.parse(parts[0]), int.parse(parts[1]));
     if (mounted) {
+      final formatted = TimeFormatter.to12Hour(prayerTimes!.fajr);
       setState(() {
-        _nextPrayerName = Lang.t(context, 'fajr');
-        _nextPrayerTimeStr = prayerTimes!.fajr;
+        _nextPrayerName = 'الفجر';
+        _nextPrayerEn = 'Fajr';
+        _nextPrayerTime12 = '${formatted['time']} ${formatted['period']}';
         _timeRemaining = tomorrowFajr.difference(now);
       });
     }
@@ -365,31 +395,19 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           children: [
             _buildTopHeader(),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        Lang.t(context, 'todaySchedule'),
-                        style: GoogleFonts.cairo(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textDark,
-                        ),
-                      ),
-                      Text(
-                        Lang.t(context, 'umAlQura'),
-                        style: GoogleFonts.cairo(
-                          fontSize: 14,
-                          color: AppColors.textMuted,
-                        ),
-                      ),
-                    ],
+                  Text(
+                    Lang.t(context, 'todaySchedule'),
+                    style: GoogleFonts.cairo(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.textDark,
+                    ),
                   ),
                   const SizedBox(height: 12),
                   isLoading
@@ -418,87 +436,100 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(36)),
       ),
-      padding: const EdgeInsets.fromLTRB(20, 50, 20, 30),
+      padding: const EdgeInsets.fromLTRB(20, 45, 20, 25),
       child: Column(
         children: [
-          // Top Row Actions
+          // Header Action Row
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              GestureDetector(
-                onTap: _openSearch,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.location_on, color: Colors.white, size: 18),
-                      const SizedBox(width: 6),
-                      Text(
-                        currentCity.name,
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
               Row(
                 children: [
+                  CircleAvatar(
+                    backgroundColor: Colors.white.withOpacity(0.15),
+                    radius: 18,
+                    child: const Icon(Icons.wb_sunny_outlined, color: Colors.white, size: 18),
+                  ),
+                  const SizedBox(width: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
                       color: Colors.white.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(20),
                     ),
-                    child: const Text('English 🗣️', style: TextStyle(color: Colors.white, fontSize: 12)),
-                  ),
-                  const SizedBox(width: 8),
-                  CircleAvatar(
-                    backgroundColor: Colors.white.withOpacity(0.15),
-                    radius: 18,
-                    child: const Icon(Icons.wb_sunny_outlined, color: Colors.white, size: 18),
+                    child: const Text('English ✨', style: TextStyle(color: Colors.white, fontSize: 12)),
                   ),
                 ],
               ),
+              GestureDetector(
+                onTap: _openSearch,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    children: [
+                      Text(
+                        '${currentCity.name}\n${currentCity.country}',
+                        textAlign: TextAlign.end,
+                        style: const TextStyle(color: Colors.white, fontSize: 11, height: 1.2),
+                      ),
+                      const SizedBox(width: 6),
+                      const Icon(Icons.location_on_outlined, color: Colors.white, size: 18),
+                    ],
+                  ),
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 25),
+          const SizedBox(height: 20),
 
-          // Next Prayer Banner
+          // Title
           Text(
             Lang.t(context, 'nextPrayer'),
-            style: const TextStyle(color: Colors.white70, fontSize: 14),
+            style: const TextStyle(color: Colors.white70, fontSize: 13),
           ),
-          const SizedBox(height: 4),
-          Text(
-            _nextPrayerName.isEmpty ? '--' : _nextPrayerName,
-            style: GoogleFonts.cairo(
-              fontSize: 36,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 2),
 
-          // Timer Pill
+          // Next Prayer Name
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                _nextPrayerEn,
+                style: const TextStyle(color: Colors.white70, fontSize: 22, fontWeight: FontWeight.w300),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                _nextPrayerName.isEmpty ? '--' : _nextPrayerName,
+                style: GoogleFonts.cairo(
+                  fontSize: 34,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          // Countdown Pill
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
             decoration: BoxDecoration(
               color: Colors.white.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(30),
+              borderRadius: BorderRadius.circular(25),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.access_time, color: Colors.white70, size: 18),
+                const Icon(Icons.nights_stay_outlined, color: Colors.white70, size: 16),
                 const SizedBox(width: 8),
                 Text(
                   _formatDuration(_timeRemaining),
                   style: GoogleFonts.robotoMono(
-                    fontSize: 22,
+                    fontSize: 20,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
                   ),
@@ -506,20 +537,22 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
+
+          // Time detail
           Text(
-            '$_nextPrayerName الساعة $_nextPrayerTimeStr م',
+            '$_nextPrayerName الساعة $_nextPrayerTime12',
             style: const TextStyle(color: Colors.white70, fontSize: 13),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
 
-          // Date Badges
+          // Dates Badges
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _buildBadge(DateFormat('EEEE d MMMM yyyy', 'ar').format(DateTime.now())),
-              const SizedBox(width: 8),
               _buildBadge('١٨ صفر ١٤٤٨ هـ'),
+              const SizedBox(width: 8),
+              _buildBadge('السبت ١ أغسطس ٢٠٢٦'),
             ],
           ),
         ],
@@ -529,14 +562,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildBadge(String text) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.12),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Text(
         text,
-        style: const TextStyle(color: Colors.white70, fontSize: 12),
+        style: const TextStyle(color: Colors.white70, fontSize: 11),
       ),
     );
   }
@@ -545,12 +578,12 @@ class _HomeScreenState extends State<HomeScreen> {
     if (prayerTimes == null) return const SizedBox();
 
     final prayers = [
-      {'key': 'fajr', 'name': Lang.t(context, 'fajr'), 'en': 'Fajr', 'time': prayerTimes!.fajr, 'icon': Icons.wb_twilight},
-      {'key': 'sunrise', 'name': Lang.t(context, 'sunrise'), 'en': 'Sunrise', 'time': prayerTimes!.sunrise, 'icon': Icons.wb_sunny_outlined},
-      {'key': 'dhuhr', 'name': Lang.t(context, 'dhuhr'), 'en': 'Dhuhr', 'time': prayerTimes!.dhuhr, 'icon': Icons.sunny},
-      {'key': 'asr', 'name': Lang.t(context, 'asr'), 'en': 'Asr', 'time': prayerTimes!.asr, 'icon': Icons.cloud_outlined},
-      {'key': 'maghrib', 'name': Lang.t(context, 'maghrib'), 'en': 'Maghrib', 'time': prayerTimes!.maghrib, 'icon': Icons.nights_stay_outlined},
-      {'key': 'isha', 'name': Lang.t(context, 'isha'), 'en': 'Isha', 'time': prayerTimes!.isha, 'icon': Icons.brightness_3_outlined},
+      {'key': 'fajr', 'name': 'الفجر', 'en': 'Fajr', 'time': prayerTimes!.fajr, 'sub': 'فرض', 'icon': Icons.mosque_outlined},
+      {'key': 'sunrise', 'name': 'الشروق', 'en': 'Sunrise', 'time': prayerTimes!.sunrise, 'sub': 'شروق', 'icon': Icons.wb_sunny_outlined},
+      {'key': 'dhuhr', 'name': 'الظهر', 'en': 'Dhuhr', 'time': prayerTimes!.dhuhr, 'sub': 'خلال', 'icon': Icons.wb_sunny},
+      {'key': 'asr', 'name': 'العصر', 'en': 'Asr', 'time': prayerTimes!.asr, 'sub': 'فرض', 'icon': Icons.cloud_outlined},
+      {'key': 'maghrib', 'name': 'المغرب', 'en': 'Maghrib', 'time': prayerTimes!.maghrib, 'sub': 'فرض', 'icon': Icons.wb_twilight},
+      {'key': 'isha', 'name': 'العشاء', 'en': 'Isha', 'time': prayerTimes!.isha, 'sub': 'فرض', 'icon': Icons.nights_stay_outlined},
     ];
 
     return ListView.builder(
@@ -560,74 +593,113 @@ class _HomeScreenState extends State<HomeScreen> {
       itemBuilder: (context, index) {
         final item = prayers[index];
         final isNext = item['name'] == _nextPrayerName;
+        final t12 = TimeFormatter.to12Hour(item['time'] as String);
+        final iqamaStr = TimeFormatter.getIqamaTime(item['time'] as String);
 
         return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
             color: isNext ? AppColors.primaryGreen : AppColors.surface,
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.03),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
+                color: Colors.black.withOpacity(0.02),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
               ),
             ],
           ),
           child: Row(
             children: [
-              // Left Notification Bell
+              // Notification Bell (Left)
               CircleAvatar(
-                backgroundColor: isNext ? Colors.white.withOpacity(0.2) : AppColors.lightGreen,
+                backgroundColor: isNext ? Colors.white.withOpacity(0.2) : const Color(0xFFEAF3EE),
                 radius: 18,
                 child: Icon(
-                  Icons.notifications_active_outlined,
+                  Icons.notifications_none_rounded,
                   color: isNext ? Colors.white : AppColors.primaryGreen,
-                  size: 18,
+                  size: 20,
                 ),
               ),
-              const SizedBox(width: 14),
+              const SizedBox(width: 12),
 
-              // Time
-              Text(
-                item['time'] as String,
-                style: GoogleFonts.cairo(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: isNext ? Colors.white : AppColors.textDark,
-                ),
-              ),
-              const SizedBox(width: 14),
-
-              // Names
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              // Time Block (12 Hours)
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
                 children: [
                   Text(
-                    item['name'] as String,
-                    style: GoogleFonts.cairo(
-                      fontSize: 16,
+                    t12['period']!,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: isNext ? Colors.white70 : AppColors.textDark,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    t12['time']!,
+                    style: GoogleFonts.robotoMono(
+                      fontSize: 18,
                       fontWeight: FontWeight.bold,
                       color: isNext ? Colors.white : AppColors.textDark,
                     ),
                   ),
+                ],
+              ),
+
+              const Spacer(),
+
+              // Prayer Name & Subtext
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        item['en'] as String,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isNext ? Colors.white70 : AppColors.textMuted,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        item['name'] as String,
+                        style: GoogleFonts.cairo(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: isNext ? Colors.white : AppColors.textDark,
+                        ),
+                      ),
+                    ],
+                  ),
                   Text(
-                    item['en'] as String,
+                    item['key'] == 'sunrise'
+                        ? 'الأذان'
+                        : (item['key'] == 'dhuhr' && isNext
+                            ? 'خلال ${_formatDuration(_timeRemaining)} الإقامة $iqamaStr'
+                            : 'الإقامة $iqamaStr'),
                     style: TextStyle(
-                      fontSize: 12,
+                      fontSize: 11,
                       color: isNext ? Colors.white70 : AppColors.textMuted,
                     ),
                   ),
                 ],
               ),
-              const Spacer(),
+              const SizedBox(width: 12),
 
               // Right Icon
-              Icon(
-                item['icon'] as IconData,
-                color: isNext ? Colors.white : AppColors.primaryGreen,
-                size: 24,
+              CircleAvatar(
+                backgroundColor: isNext ? Colors.white.withOpacity(0.2) : const Color(0xFFEAF3EE),
+                radius: 18,
+                child: Icon(
+                  item['icon'] as IconData,
+                  color: isNext ? Colors.white : AppColors.primaryGreen,
+                  size: 18,
+                ),
               ),
             ],
           ),
