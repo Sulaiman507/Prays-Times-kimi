@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -6,9 +7,17 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-void main() {
-  WidgetsFlutterBinding.ensureInitialized();
-  runApp(const MyApp());
+// ============================
+// App Constants
+// ============================
+class AppColors {
+  AppColors._();
+
+  static const Color primary = Color(0xFF38BDF8);
+  static const Color primaryDark = Color(0xFF0EA5E9);
+  static const Color secondary = Color(0xFFF59E0B);
+  static const Color background = Color(0xFF0F172A);
+  static const Color surface = Color(0xFF1E293B);
 }
 
 // ============================
@@ -16,6 +25,7 @@ void main() {
 // ============================
 class AppLocalizations {
   final Locale locale;
+
   AppLocalizations(this.locale);
 
   static AppLocalizations? of(BuildContext context) {
@@ -28,16 +38,8 @@ class AppLocalizations {
   late Map<String, String> _localizedStrings;
 
   Future<bool> load() async {
-    String jsonString = await DefaultAssetBundle.of(
-            // We use simple inline map to avoid extra files
-            )
-        .loadString('assets/lang/${locale.languageCode}.json')
-        .catchError((_) => '{}');
-
-    Map<String, dynamic> jsonMap = json.decode(jsonString);
-    _localizedStrings = jsonMap.map((key, value) {
-      return MapEntry(key, value.toString());
-    });
+    // Use inline fallback map instead of external asset files
+    _localizedStrings = Lang.texts[locale.languageCode] ?? Lang.texts['en']!;
     return true;
   }
 
@@ -53,7 +55,7 @@ class _AppLocalizationsDelegate
 
   @override
   Future<AppLocalizations> load(Locale locale) async {
-    AppLocalizations localizations = AppLocalizations(locale);
+    final localizations = AppLocalizations(locale);
     await localizations.load();
     return localizations;
   }
@@ -84,6 +86,9 @@ class Lang {
       'today': 'Today',
       'addToFavorites': 'Add to Favorites',
       'removeFromFavorites': 'Remove',
+      'noCitiesFound': 'No cities found',
+      'failedToLoadPrayerTimes': 'Failed to load prayer times',
+      'noFavoritesYet': 'No favorites yet',
     },
     'ar': {
       'appName': 'مواقيت الصلاة',
@@ -104,6 +109,9 @@ class Lang {
       'today': 'اليوم',
       'addToFavorites': 'إضافة للمفضلة',
       'removeFromFavorites': 'حذف',
+      'noCitiesFound': 'لم يتم العثور على مدن',
+      'failedToLoadPrayerTimes': 'فشل تحميل مواقيت الصلاة',
+      'noFavoritesYet': 'لا توجد مفضلات بعد',
     },
   };
 
@@ -122,7 +130,7 @@ class City {
   final double lat;
   final double lng;
 
-  City({
+  const City({
     required this.name,
     required this.country,
     required this.lat,
@@ -137,11 +145,29 @@ class City {
       };
 
   factory City.fromJson(Map<String, dynamic> json) => City(
-        name: json['name'],
-        country: json['country'] ?? '',
-        lat: json['lat'].toDouble(),
-        lng: json['lng'].toDouble(),
+        name: (json['name'] ?? '').toString(),
+        country: (json['country'] ?? '').toString(),
+        lat: _parseDouble(json['lat']) ?? 0.0,
+        lng: _parseDouble(json['lng']) ?? 0.0,
       );
+
+  static double? _parseDouble(dynamic value) {
+    if (value == null) return null;
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    return double.tryParse(value.toString());
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is City &&
+          runtimeType == other.runtimeType &&
+          name == other.name &&
+          country == other.country;
+
+  @override
+  int get hashCode => name.hashCode ^ country.hashCode;
 }
 
 class PrayerTimes {
@@ -153,7 +179,7 @@ class PrayerTimes {
   final String isha;
   final String date;
 
-  PrayerTimes({
+  const PrayerTimes({
     required this.fajr,
     required this.sunrise,
     required this.dhuhr,
@@ -164,16 +190,24 @@ class PrayerTimes {
   });
 
   factory PrayerTimes.fromApi(Map<String, dynamic> data, String dateStr) {
-    final timings = data['timings'];
+    final timings = data['timings'] as Map<String, dynamic>? ?? {};
     return PrayerTimes(
-      fajr: timings['Fajr'],
-      sunrise: timings['Sunrise'],
-      dhuhr: timings['Dhuhr'],
-      asr: timings['Asr'],
-      maghrib: timings['Maghrib'],
-      isha: timings['Isha'],
+      fajr: _extractTime(timings['Fajr']),
+      sunrise: _extractTime(timings['Sunrise']),
+      dhuhr: _extractTime(timings['Dhuhr']),
+      asr: _extractTime(timings['Asr']),
+      maghrib: _extractTime(timings['Maghrib']),
+      isha: _extractTime(timings['Isha']),
       date: dateStr,
     );
+  }
+
+  static String _extractTime(dynamic value) {
+    if (value == null) return '--:--';
+    final str = value.toString().trim();
+    // API returns "HH:mm (TIMEZONE)" - extract HH:mm part
+    final match = RegExp(r'^(\d{1,2}:\d{2})').firstMatch(str);
+    return match?.group(1) ?? str;
   }
 
   Map<String, dynamic> toJson() => {
@@ -187,13 +221,13 @@ class PrayerTimes {
       };
 
   factory PrayerTimes.fromJson(Map<String, dynamic> json) => PrayerTimes(
-        fajr: json['fajr'],
-        sunrise: json['sunrise'],
-        dhuhr: json['dhuhr'],
-        asr: json['asr'],
-        maghrib: json['maghrib'],
-        isha: json['isha'],
-        date: json['date'],
+        fajr: (json['fajr'] ?? '--:--').toString(),
+        sunrise: (json['sunrise'] ?? '--:--').toString(),
+        dhuhr: (json['dhuhr'] ?? '--:--').toString(),
+        asr: (json['asr'] ?? '--:--').toString(),
+        maghrib: (json['maghrib'] ?? '--:--').toString(),
+        isha: (json['isha'] ?? '--:--').toString(),
+        date: (json['date'] ?? '').toString(),
       );
 }
 
@@ -204,7 +238,7 @@ class MyApp extends StatefulWidget {
   const MyApp({super.key});
 
   static void setLocale(BuildContext context, Locale newLocale) {
-    _MyAppState? state = context.findAncestorStateOfType<_MyAppState>();
+    final state = context.findAncestorStateOfType<_MyAppState>();
     state?.setLocale(newLocale);
   }
 
@@ -216,7 +250,21 @@ class _MyAppState extends State<MyApp> {
   Locale _locale = const Locale('ar');
 
   void setLocale(Locale locale) {
+    if (_locale == locale) return;
     setState(() => _locale = locale);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedLanguage();
+  }
+
+  Future<void> _loadSavedLanguage() async {
+    final lang = await StorageService.getLanguage();
+    if (mounted) {
+      setState(() => _locale = Locale(lang));
+    }
   }
 
   @override
@@ -232,36 +280,39 @@ class _MyAppState extends State<MyApp> {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      theme: ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF0F172A),
-        colorScheme: const ColorScheme.dark(
-          primary: Color(0xFF38BDF8),
-          secondary: Color(0xFFF59E0B),
-          surface: Color(0xFF1E293B),
-          background: Color(0xFF0F172A),
-          onPrimary: Colors.white,
-          onSecondary: Colors.black,
-        ),
-        textTheme: GoogleFonts.cairoTextTheme(ThemeData.dark().textTheme),
-        cardTheme: CardTheme(
-          elevation: 8,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: const Color(0xFF1E293B),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(16),
-            borderSide: BorderSide.none,
-          ),
-          hintStyle: const TextStyle(color: Colors.white60),
+      theme: _buildTheme(),
+      home: const HomeScreen(),
+    );
+  }
+
+  ThemeData _buildTheme() {
+    return ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.dark,
+      scaffoldBackgroundColor: AppColors.background,
+      colorScheme: const ColorScheme.dark(
+        primary: AppColors.primary,
+        secondary: AppColors.secondary,
+        surface: AppColors.surface,
+        onPrimary: Colors.white,
+        onSecondary: Colors.black,
+      ),
+      textTheme: GoogleFonts.cairoTextTheme(ThemeData.dark().textTheme),
+      cardTheme: CardTheme(
+        elevation: 8,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
         ),
       ),
-      home: const HomeScreen(),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: AppColors.surface,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide.none,
+        ),
+        hintStyle: const TextStyle(color: Colors.white60),
+      ),
     );
   }
 }
@@ -270,56 +321,77 @@ class _MyAppState extends State<MyApp> {
 // Storage Service
 // ============================
 class StorageService {
+  StorageService._();
+
   static const String _cityKey = 'last_city';
   static const String _prayersKey = 'last_prayers';
   static const String _favoritesKey = 'favorites';
   static const String _langKey = 'language';
 
+  static SharedPreferences? _prefs;
+
+  static Future<SharedPreferences> get _instance async {
+    _prefs ??= await SharedPreferences.getInstance();
+    return _prefs!;
+  }
+
   static Future<void> saveLastCity(City city) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _instance;
     await prefs.setString(_cityKey, jsonEncode(city.toJson()));
   }
 
   static Future<City?> getLastCity() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _instance;
     final str = prefs.getString(_cityKey);
-    if (str == null) return null;
-    return City.fromJson(jsonDecode(str));
+    if (str == null || str.isEmpty) return null;
+    try {
+      return City.fromJson(jsonDecode(str) as Map<String, dynamic>);
+    } catch (_) {
+      return null;
+    }
   }
 
   static Future<void> savePrayers(PrayerTimes prayers) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _instance;
     await prefs.setString(_prayersKey, jsonEncode(prayers.toJson()));
   }
 
   static Future<PrayerTimes?> getPrayers() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _instance;
     final str = prefs.getString(_prayersKey);
-    if (str == null) return null;
-    return PrayerTimes.fromJson(jsonDecode(str));
+    if (str == null || str.isEmpty) return null;
+    try {
+      return PrayerTimes.fromJson(jsonDecode(str) as Map<String, dynamic>);
+    } catch (_) {
+      return null;
+    }
   }
 
   static Future<void> saveFavorites(List<City> cities) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _instance;
     final list = cities.map((c) => c.toJson()).toList();
     await prefs.setString(_favoritesKey, jsonEncode(list));
   }
 
   static Future<List<City>> getFavorites() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _instance;
     final str = prefs.getString(_favoritesKey);
-    if (str == null) return [];
-    final list = jsonDecode(str) as List;
-    return list.map((e) => City.fromJson(e)).toList();
+    if (str == null || str.isEmpty) return [];
+    try {
+      final list = jsonDecode(str) as List<dynamic>;
+      return list.map((e) => City.fromJson(e as Map<String, dynamic>)).toList();
+    } catch (_) {
+      return [];
+    }
   }
 
   static Future<void> saveLanguage(String lang) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _instance;
     await prefs.setString(_langKey, lang);
   }
 
   static Future<String> getLanguage() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _instance;
     return prefs.getString(_langKey) ?? 'ar';
   }
 }
@@ -328,38 +400,62 @@ class StorageService {
 // API Service
 // ============================
 class PrayerApiService {
+  PrayerApiService._();
+
+  static final http.Client _client = http.Client();
+
   static Future<PrayerTimes?> fetchPrayerTimes(City city) async {
     final date = DateFormat('dd-MM-yyyy').format(DateTime.now());
     final url =
         'https://api.aladhan.com/v1/timings/$date?latitude=${city.lat}&longitude=${city.lng}&method=4';
 
-    final response = await http.get(Uri.parse(url));
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      return PrayerTimes.fromApi(data['data'], date);
+    try {
+      final response = await _client
+          .get(Uri.parse(url))
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        return PrayerTimes.fromApi(data['data'], date);
+      }
+      return null;
+    } on TimeoutException {
+      return null;
+    } catch (_) {
+      return null;
     }
-    return null;
   }
 
   static Future<List<City>> searchCity(String query) async {
-    if (query.length < 2) return [];
+    if (query.trim().length < 2) return [];
+    final encodedQuery = Uri.encodeQueryComponent(query.trim());
     final url =
-        'https://api.aladhan.com/v1/cities?country=&state=&q=$query&limit=10';
+        'https://api.aladhan.com/v1/cities?country=&state=&q=$encodedQuery&limit=10';
 
-    final response = await http.get(Uri.parse(url));
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      final cities = data['data'] as List;
-      return cities.map((c) {
-        return City(
-          name: c['name'] ?? '',
-          country: c['country'] ?? '',
-          lat: double.tryParse(c['latitude'].toString()) ?? 0,
-          lng: double.tryParse(c['longitude'].toString()) ?? 0,
-        );
-      }).toList();
+    try {
+      final response = await _client
+          .get(Uri.parse(url))
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final cities = data['data'] as List<dynamic>? ?? [];
+        return cities.map((c) {
+          final cityMap = c as Map<String, dynamic>;
+          return City(
+            name: (cityMap['name'] ?? '').toString(),
+            country: (cityMap['country'] ?? '').toString(),
+            lat: City._parseDouble(cityMap['latitude']) ?? 0.0,
+            lng: City._parseDouble(cityMap['longitude']) ?? 0.0,
+          );
+        }).toList();
+      }
+      return [];
+    } on TimeoutException {
+      return [];
+    } catch (_) {
+      return [];
     }
-    return [];
   }
 }
 
@@ -373,7 +469,8 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen>
+    with AutomaticKeepAliveClientMixin {
   City? currentCity;
   PrayerTimes? prayerTimes;
   List<City> favorites = [];
@@ -382,59 +479,70 @@ class _HomeScreenState extends State<HomeScreen> {
   int selectedNavIndex = 0;
 
   @override
+  bool get wantKeepAlive => true;
+
+  @override
   void initState() {
     super.initState();
     loadInitialData();
   }
 
   Future<void> loadInitialData() async {
-    setState(() => isLoading = true);
+    if (mounted) setState(() => isLoading = true);
+
     final savedCity = await StorageService.getLastCity();
     final savedPrayers = await StorageService.getPrayers();
     final savedFavorites = await StorageService.getFavorites();
 
-    setState(() {
-      favorites = savedFavorites;
-      if (savedCity != null) {
-        currentCity = savedCity;
-        prayerTimes = savedPrayers;
-      }
-    });
+    if (mounted) {
+      setState(() {
+        favorites = savedFavorites;
+        if (savedCity != null) {
+          currentCity = savedCity;
+          prayerTimes = savedPrayers;
+        }
+      });
+    }
 
     if (savedCity != null) {
       await refreshPrayerTimes(savedCity);
-    } else {
+    } else if (mounted) {
       setState(() => isLoading = false);
     }
   }
 
   Future<void> refreshPrayerTimes(City city) async {
-    setState(() {
-      currentCity = city;
-      isLoading = true;
-      error = null;
-    });
+    if (mounted) {
+      setState(() {
+        currentCity = city;
+        isLoading = true;
+        error = null;
+      });
+    }
 
     try {
       final prayers = await PrayerApiService.fetchPrayerTimes(city);
       if (prayers != null) {
         await StorageService.savePrayers(prayers);
-        setState(() => prayerTimes = prayers);
+        if (mounted) setState(() => prayerTimes = prayers);
       } else {
-        setState(() => error = 'Failed to load prayer times');
+        if (mounted) {
+          setState(() => error = Lang.t(context, 'failedToLoadPrayerTimes'));
+        }
       }
     } catch (e) {
-      setState(() => error = e.toString());
+      if (mounted) setState(() => error = e.toString());
     } finally {
-      setState(() => isLoading = false);
+      if (mounted) setState(() => isLoading = false);
     }
   }
 
   bool get isFavorite =>
       currentCity != null &&
-      favorites.any((c) => c.name == currentCity!.name && c.country == currentCity!.country);
+      favorites.any((c) =>
+          c.name == currentCity!.name && c.country == currentCity!.country);
 
-  void toggleFavorite() async {
+  Future<void> toggleFavorite() async {
     if (currentCity == null) return;
     setState(() {
       if (isFavorite) {
@@ -447,52 +555,95 @@ class _HomeScreenState extends State<HomeScreen> {
     await StorageService.saveFavorites(favorites);
   }
 
-  String getNextPrayer() {
-    if (prayerTimes == null) return '';
-    final now = TimeOfDay.now();
-    final prayers = [
-      {'name': Lang.t(context, 'fajr'), 'time': prayerTimes!.fajr},
-      {'name': Lang.t(context, 'sunrise'), 'time': prayerTimes!.sunrise},
-      {'name': Lang.t(context, 'dhuhr'), 'time': prayerTimes!.dhuhr},
-      {'name': Lang.t(context, 'asr'), 'time': prayerTimes!.asr},
-      {'name': Lang.t(context, 'maghrib'), 'time': prayerTimes!.maghrib},
-      {'name': Lang.t(context, 'isha'), 'time': prayerTimes!.isha},
-    ];
-
-    for (var p in prayers) {
-      final t = parseTime(p['time']!);
-      if (t.hour > now.hour || (t.hour == now.hour && t.minute > now.minute)) {
-        return '${p['name']}: ${p['time']}';
-      }
-    }
-    return '${Lang.t(context, 'fajr')}: ${prayerTimes!.fajr}';
+  TimeOfDay? _parseTime(String time) {
+    final clean = PrayerTimes._extractTime(time);
+    final parts = clean.split(':');
+    if (parts.length < 2) return null;
+    final hour = int.tryParse(parts[0]);
+    final minute = int.tryParse(parts[1]);
+    if (hour == null || minute == null) return null;
+    return TimeOfDay(hour: hour, minute: minute);
   }
 
-  TimeOfDay parseTime(String time) {
-    final parts = time.split(':');
-    return TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+  ({String key, String name, String time})? _getNextPrayer() {
+    if (prayerTimes == null) return null;
+
+    final now = TimeOfDay.now();
+    final prayers = [
+      (key: 'fajr', name: Lang.t(context, 'fajr'), time: prayerTimes!.fajr),
+      (key: 'dhuhr', name: Lang.t(context, 'dhuhr'), time: prayerTimes!.dhuhr),
+      (key: 'asr', name: Lang.t(context, 'asr'), time: prayerTimes!.asr),
+      (
+        key: 'maghrib',
+        name: Lang.t(context, 'maghrib'),
+        time: prayerTimes!.maghrib
+      ),
+      (key: 'isha', name: Lang.t(context, 'isha'), time: prayerTimes!.isha),
+    ];
+
+    for (final p in prayers) {
+      final t = _parseTime(p.time);
+      if (t == null) continue;
+      if (t.hour > now.hour ||
+          (t.hour == now.hour && t.minute > now.minute)) {
+        return p;
+      }
+    }
+
+    // All prayers passed, next is Fajr tomorrow
+    return (
+      key: 'fajr',
+      name: Lang.t(context, 'fajr'),
+      time: prayerTimes!.fajr
+    );
+  }
+
+  String getNextPrayerText() {
+    final next = _getNextPrayer();
+    if (next == null) return '';
+    return '${next.name}: ${next.time}';
+  }
+
+  String getNextPrayerKey() {
+    return _getNextPrayer()?.key ?? '';
+  }
+
+  void _openSearch() async {
+    final city = await showSearch<City?>(
+      context: context,
+      delegate: CitySearchDelegate(),
+    );
+    if (city != null) {
+      await StorageService.saveLastCity(city);
+      await refreshPrayerTimes(city);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final pages = [
-      _buildHome(),
-      FavoritesScreen(
-        favorites: favorites,
-        onCitySelected: (city) => refreshPrayerTimes(city),
-      ),
-      SettingsScreen(
-        onLanguageChanged: () => setState(() {}),
-      ),
-    ];
+    super.build(context); // Required when using AutomaticKeepAliveClientMixin
 
     return Scaffold(
-      body: SafeArea(child: pages[selectedNavIndex]),
+      body: SafeArea(
+        child: IndexedStack(
+          index: selectedNavIndex,
+          children: [
+            _buildHome(),
+            FavoritesScreen(
+              favorites: favorites,
+              onCitySelected: refreshPrayerTimes,
+            ),
+            SettingsScreen(
+              onLanguageChanged: () => setState(() {}),
+            ),
+          ],
+        ),
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: selectedNavIndex,
         onDestinationSelected: (index) => setState(() => selectedNavIndex = index),
-        backgroundColor: const Color(0xFF1E293B),
-        indicatorColor: const Color(0xFF38BDF8).withOpacity(0.2),
+        backgroundColor: AppColors.surface,
+        indicatorColor: AppColors.primary.withOpacity(0.2),
         destinations: [
           NavigationDestination(
             icon: const Icon(Icons.home_outlined),
@@ -527,127 +678,11 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Header
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            Lang.t(context, 'appName'),
-                            style: GoogleFonts.cairo(
-                              fontSize: 28,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                          Text(
-                            DateFormat('EEEE, d MMMM', Localizations.localeOf(context).languageCode)
-                                .format(DateTime.now()),
-                            style: const TextStyle(color: Colors.white70),
-                          ),
-                        ],
-                      ),
-                      IconButton(
-                        onPressed: () => _openSearch(),
-                        icon: const Icon(Icons.search, color: Colors.white, size: 28),
-                      ),
-                    ],
-                  ),
+                  _buildHeader(),
                   const SizedBox(height: 24),
-
-                  // Hero Card
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(28),
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF38BDF8), Color(0xFF0EA5E9)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xFF38BDF8).withOpacity(0.3),
-                          blurRadius: 20,
-                          offset: const Offset(0, 10),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                currentCity?.name ?? Lang.t(context, 'searchCity'),
-                                style: GoogleFonts.cairo(
-                                  fontSize: 26,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            if (currentCity != null)
-                              IconButton(
-                                onPressed: toggleFavorite,
-                                icon: Icon(
-                                  isFavorite ? Icons.favorite : Icons.favorite_border,
-                                  color: Colors.white,
-                                  size: 28,
-                                ),
-                              ),
-                          ],
-                        ),
-                        Text(
-                          currentCity?.country ?? '',
-                          style: const TextStyle(color: Colors.white80, fontSize: 16),
-                        ),
-                        const SizedBox(height: 24),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Text(
-                            '${Lang.t(context, 'nextPrayer')}: ${getNextPrayer()}',
-                            style: GoogleFonts.cairo(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                  _buildHeroCard(),
                   const SizedBox(height: 28),
-
-                  // Prayer Times Grid
-                  if (isLoading)
-                    const Center(child: CircularProgressIndicator(color: Color(0xFF38BDF8)))
-                  else if (error != null)
-                    Center(
-                      child: Text(
-                        error!,
-                        style: const TextStyle(color: Colors.redAccent),
-                      ),
-                    )
-                  else if (prayerTimes == null)
-                    Center(
-                      child: Text(
-                        Lang.t(context, 'noData'),
-                        style: const TextStyle(color: Colors.white70),
-                      ),
-                    )
-                  else
-                    _buildPrayersGrid(prayerTimes!),
+                  _buildPrayerContent(),
                 ],
               ),
             ),
@@ -657,14 +692,143 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildHeader() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              Lang.t(context, 'appName'),
+              style: GoogleFonts.cairo(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            Text(
+              DateFormat(
+                'EEEE, d MMMM',
+                Localizations.localeOf(context).languageCode,
+              ).format(DateTime.now()),
+              style: const TextStyle(color: Colors.white70),
+            ),
+          ],
+        ),
+        IconButton(
+          onPressed: _openSearch,
+          icon: const Icon(Icons.search, color: Colors.white, size: 28),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHeroCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(28),
+        gradient: const LinearGradient(
+          colors: [AppColors.primary, AppColors.primaryDark],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withOpacity(0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  currentCity?.name ?? Lang.t(context, 'searchCity'),
+                  style: GoogleFonts.cairo(
+                    fontSize: 26,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (currentCity != null)
+                IconButton(
+                  onPressed: toggleFavorite,
+                  icon: Icon(
+                    isFavorite ? Icons.favorite : Icons.favorite_border,
+                    color: Colors.white,
+                    size: 28,
+                  ),
+                ),
+            ],
+          ),
+          Text(
+            currentCity?.country ?? '',
+            style: const TextStyle(color: Colors.white80, fontSize: 16),
+          ),
+          const SizedBox(height: 24),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Text(
+              '${Lang.t(context, 'nextPrayer')}: ${getNextPrayerText()}',
+              style: GoogleFonts.cairo(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPrayerContent() {
+    if (isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(color: AppColors.primary),
+      );
+    }
+    if (error != null) {
+      return Center(
+        child: Text(
+          error!,
+          style: const TextStyle(color: Colors.redAccent),
+        ),
+      );
+    }
+    if (prayerTimes == null) {
+      return Center(
+        child: Text(
+          Lang.t(context, 'noData'),
+          style: const TextStyle(color: Colors.white70),
+        ),
+      );
+    }
+    return _buildPrayersGrid(prayerTimes!);
+  }
+
   Widget _buildPrayersGrid(PrayerTimes pt) {
     final prayers = [
-      {'key': 'fajr', 'name': Lang.t(context, 'fajr'), 'time': pt.fajr, 'icon': Icons.wb_twilight},
-      {'key': 'sunrise', 'name': Lang.t(context, 'sunrise'), 'time': pt.sunrise, 'icon': Icons.wb_sunny_outlined},
-      {'key': 'dhuhr', 'name': Lang.t(context, 'dhuhr'), 'time': pt.dhuhr, 'icon': Icons.sunny},
-      {'key': 'asr', 'name': Lang.t(context, 'asr'), 'time': pt.asr, 'icon': Icons.cloud},
-      {'key': 'maghrib', 'name': Lang.t(context, 'maghrib'), 'time': pt.maghrib, 'icon': Icons.nights_stay_outlined},
-      {'key': 'isha', 'name': Lang.t(context, 'isha'), 'time': pt.isha, 'icon': Icons.brightness_3},
+      (key: 'fajr', name: Lang.t(context, 'fajr'), time: pt.fajr, icon: Icons.wb_twilight),
+      (key: 'sunrise', name: Lang.t(context, 'sunrise'), time: pt.sunrise, icon: Icons.wb_sunny_outlined),
+      (key: 'dhuhr', name: Lang.t(context, 'dhuhr'), time: pt.dhuhr, icon: Icons.sunny),
+      (key: 'asr', name: Lang.t(context, 'asr'), time: pt.asr, icon: Icons.cloud),
+      (key: 'maghrib', name: Lang.t(context, 'maghrib'), time: pt.maghrib, icon: Icons.nights_stay_outlined),
+      (key: 'isha', name: Lang.t(context, 'isha'), time: pt.isha, icon: Icons.brightness_3),
     ];
 
     return GridView.builder(
@@ -681,7 +845,7 @@ class _HomeScreenState extends State<HomeScreen> {
         final p = prayers[index];
         return Container(
           decoration: BoxDecoration(
-            color: const Color(0xFF1E293B),
+            color: AppColors.surface,
             borderRadius: BorderRadius.circular(24),
             border: Border.all(color: Colors.white.withOpacity(0.05)),
           ),
@@ -693,18 +857,18 @@ class _HomeScreenState extends State<HomeScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Icon(p['icon'] as IconData, color: const Color(0xFF38BDF8), size: 28),
-                  if (p['key'] == getNextPrayerKey())
+                  Icon(p.icon, color: AppColors.primary, size: 28),
+                  if (p.key == getNextPrayerKey())
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF59E0B).withOpacity(0.2),
+                        color: AppColors.secondary.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
                         Lang.t(context, 'nextPrayer'),
                         style: const TextStyle(
-                          color: Color(0xFFF59E0B),
+                          color: AppColors.secondary,
                           fontSize: 10,
                           fontWeight: FontWeight.bold,
                         ),
@@ -716,7 +880,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    p['time'] as String,
+                    p.time,
                     style: GoogleFonts.cairo(
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
@@ -724,7 +888,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   Text(
-                    p['name'] as String,
+                    p.name,
                     style: const TextStyle(color: Colors.white70, fontSize: 15),
                   ),
                 ],
@@ -735,51 +899,24 @@ class _HomeScreenState extends State<HomeScreen> {
       },
     );
   }
-
-  String getNextPrayerKey() {
-    if (prayerTimes == null) return '';
-    final now = TimeOfDay.now();
-    final prayers = [
-      {'key': 'fajr', 'time': prayerTimes!.fajr},
-      {'key': 'dhuhr', 'time': prayerTimes!.dhuhr},
-      {'key': 'asr', 'time': prayerTimes!.asr},
-      {'key': 'maghrib', 'time': prayerTimes!.maghrib},
-      {'key': 'isha', 'time': prayerTimes!.isha},
-    ];
-
-    for (var p in prayers) {
-      final t = parseTime(p['time']!);
-      if (t.hour > now.hour || (t.hour == now.hour && t.minute > now.minute)) {
-        return p['key']!;
-      }
-    }
-    return 'fajr';
-  }
-
-  void _openSearch() async {
-    final city = await showSearch<City?>(
-      context: context,
-      delegate: CitySearchDelegate(),
-    );
-    if (city != null) {
-      await StorageService.saveLastCity(city);
-      await refreshPrayerTimes(city);
-    }
-  }
 }
 
 // ============================
 // Search Delegate
 // ============================
 class CitySearchDelegate extends SearchDelegate<City?> {
-  List<City> results = [];
-  bool loading = false;
+  Timer? _debounce;
+  String? _lastQuery;
+  Future<List<City>>? _searchFuture;
 
   @override
   List<Widget>? buildActions(BuildContext context) => [
         IconButton(
           icon: const Icon(Icons.clear),
-          onPressed: () => query = '',
+          onPressed: () {
+            query = '';
+            _searchFuture = null;
+          },
         ),
       ];
 
@@ -795,8 +932,20 @@ class CitySearchDelegate extends SearchDelegate<City?> {
   @override
   Widget buildSuggestions(BuildContext context) => _buildList(context);
 
+  void _onQueryChanged(String value) {
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
+    _debounce = Timer(const Duration(milliseconds: 500), () {
+      if (value.trim().length >= 2) {
+        _lastQuery = value.trim();
+        _searchFuture = PrayerApiService.searchCity(_lastQuery!);
+      } else {
+        _searchFuture = null;
+      }
+    });
+  }
+
   Widget _buildList(BuildContext context) {
-    if (query.length < 2) {
+    if (query.trim().length < 2) {
       return Center(
         child: Text(
           Lang.t(context, 'searchCity'),
@@ -805,134 +954,13 @@ class CitySearchDelegate extends SearchDelegate<City?> {
       );
     }
 
-    return FutureBuilder<List<City>>(
-      future: PrayerApiService.searchCity(query),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator(color: Color(0xFF38BDF8)));
-        }
-        if (!snapshot.hasData || snapshot.data!.isEmpty) {
-          return const Center(
-            child: Text('No cities found', style: TextStyle(color: Colors.white60)),
-          );
-        }
-        return ListView.builder(
-          itemCount: snapshot.data!.length,
-          itemBuilder: (context, index) {
-            final city = snapshot.data![index];
-            return ListTile(
-              leading: const Icon(Icons.location_city, color: Color(0xFF38BDF8)),
-              title: Text(city.name, style: const TextStyle(color: Colors.white)),
-              subtitle: Text(city.country, style: const TextStyle(color: Colors.white60)),
-              onTap: () => close(context, city),
-            );
-          },
-        );
-      },
-    );
-  }
-}
-
-// ============================
-// Favorites Screen
-// ============================
-class FavoritesScreen extends StatelessWidget {
-  final List<City> favorites;
-  final Function(City) onCitySelected;
-
-  const FavoritesScreen({
-    super.key,
-    required this.favorites,
-    required this.onCitySelected,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    if (favorites.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.favorite_border, size: 64, color: Colors.white30),
-            const SizedBox(height: 16),
-            Text(
-              Lang.t(context, 'favorites'),
-              style: const TextStyle(color: Colors.white60, fontSize: 18),
-            ),
-          ],
-        ),
-      );
+    if (_lastQuery != query.trim()) {
+      _onQueryChanged(query);
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(20),
-      itemCount: favorites.length,
-      itemBuilder: (context, index) {
-        final city = favorites[index];
-        return Card(
-          margin: const EdgeInsets.only(bottom: 12),
-          child: ListTile(
-            leading: const CircleAvatar(
-              backgroundColor: Color(0xFF38BDF8),
-              child: Icon(Icons.location_on, color: Colors.white),
-            ),
-            title: Text(city.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: Text(city.country),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.white60),
-            onTap: () => onCitySelected(city),
-          ),
-        );
-      },
-    );
-  }
-}
-
-// ============================
-// Settings Screen
-// ============================
-class SettingsScreen extends StatelessWidget {
-  final VoidCallback onLanguageChanged;
-
-  const SettingsScreen({super.key, required this.onLanguageChanged});
-
-  @override
-  Widget build(BuildContext context) {
-    final isArabic = Localizations.localeOf(context).languageCode == 'ar';
-
-    return Padding(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            Lang.t(context, 'settings'),
-            style: GoogleFonts.cairo(fontSize: 28, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 24),
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.language, color: Color(0xFF38BDF8)),
-              title: Text(Lang.t(context, 'language')),
-              trailing: DropdownButton<String>(
-                value: isArabic ? 'ar' : 'en',
-                dropdownColor: const Color(0xFF1E293B),
-                underline: const SizedBox(),
-                items: [
-                  DropdownMenuItem(value: 'ar', child: Text(Lang.t(context, 'arabic'))),
-                  DropdownMenuItem(value: 'en', child: Text(Lang.t(context, 'english'))),
-                ],
-                onChanged: (value) async {
-                  if (value != null) {
-                    await StorageService.saveLanguage(value);
-                    MyApp.setLocale(context, Locale(value));
-                    onLanguageChanged();
-                  }
-                },
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
+    return FutureBuilder<List<City>>(
+      future: _searchFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: CircularProgressIndicator(color: App
