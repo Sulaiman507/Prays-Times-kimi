@@ -21,6 +21,14 @@ class AppColors {
 }
 
 // ============================
+// Main Execution Entry Point
+// ============================
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(const MyApp());
+}
+
+// ============================
 // Localization Setup
 // ============================
 class AppLocalizations {
@@ -38,7 +46,6 @@ class AppLocalizations {
   late Map<String, String> _localizedStrings;
 
   Future<bool> load() async {
-    // Use inline fallback map instead of external asset files
     _localizedStrings = Lang.texts[locale.languageCode] ?? Lang.texts['en']!;
     return true;
   }
@@ -205,7 +212,6 @@ class PrayerTimes {
   static String _extractTime(dynamic value) {
     if (value == null) return '--:--';
     final str = value.toString().trim();
-    // API returns "HH:mm (TIMEZONE)" - extract HH:mm part
     final match = RegExp(r'^(\d{1,2}:\d{2})').firstMatch(str);
     return match?.group(1) ?? str;
   }
@@ -298,7 +304,7 @@ class _MyAppState extends State<MyApp> {
         onSecondary: Colors.black,
       ),
       textTheme: GoogleFonts.cairoTextTheme(ThemeData.dark().textTheme),
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         elevation: 8,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
@@ -590,7 +596,6 @@ class _HomeScreenState extends State<HomeScreen>
       }
     }
 
-    // All prayers passed, next is Fajr tomorrow
     return (
       key: 'fajr',
       name: Lang.t(context, 'fajr'),
@@ -621,7 +626,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   @override
   Widget build(BuildContext context) {
-    super.build(context); // Required when using AutomaticKeepAliveClientMixin
+    super.build(context);
 
     return Scaffold(
       body: SafeArea(
@@ -773,7 +778,7 @@ class _HomeScreenState extends State<HomeScreen>
           ),
           Text(
             currentCity?.country ?? '',
-            style: const TextStyle(color: Colors.white80, fontSize: 16),
+            style: const TextStyle(color: Colors.white, fontSize: 16),
           ),
           const SizedBox(height: 24),
           Container(
@@ -902,6 +907,112 @@ class _HomeScreenState extends State<HomeScreen>
 }
 
 // ============================
+// Favorites Screen
+// ============================
+class FavoritesScreen extends StatelessWidget {
+  final List<City> favorites;
+  final Function(City) onCitySelected;
+
+  const FavoritesScreen({
+    super.key,
+    required this.favorites,
+    required this.onCitySelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (favorites.isEmpty) {
+      return Center(
+        child: Text(
+          Lang.t(context, 'noFavoritesYet'),
+          style: const TextStyle(color: Colors.white70, fontSize: 16),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(20),
+      itemCount: favorites.length,
+      itemBuilder: (context, index) {
+        final city = favorites[index];
+        return Card(
+          color: AppColors.surface,
+          margin: const EdgeInsets.only(bottom: 12),
+          child: ListTile(
+            title: Text(
+              city.name,
+              style: GoogleFonts.cairo(color: Colors.white, fontWeight: FontWeight.bold),
+            ),
+            subtitle: Text(
+              city.country,
+              style: const TextStyle(color: Colors.white70),
+            ),
+            trailing: const Icon(Icons.arrow_forward_ios, color: AppColors.primary, size: 18),
+            onTap: () => onCitySelected(city),
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ============================
+// Settings Screen
+// ============================
+class SettingsScreen extends StatelessWidget {
+  final VoidCallback onLanguageChanged;
+
+  const SettingsScreen({super.key, required this.onLanguageChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    final currentLang = Localizations.localeOf(context).languageCode;
+
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        Text(
+          Lang.t(context, 'settings'),
+          style: GoogleFonts.cairo(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white),
+        ),
+        const SizedBox(height: 20),
+        Card(
+          color: AppColors.surface,
+          child: ListTile(
+            leading: const Icon(Icons.language, color: AppColors.primary),
+            title: Text(Lang.t(context, 'language'), style: const TextStyle(color: Colors.white)),
+            trailing: DropdownButton<String>(
+              value: currentLang,
+              dropdownColor: AppColors.surface,
+              underline: const SizedBox(),
+              items: [
+                DropdownMenuItem(
+                  value: 'ar',
+                  child: Text(Lang.t(context, 'arabic'), style: const TextStyle(color: Colors.white)),
+                ),
+                DropdownMenuItem(
+                  value: 'en',
+                  child: Text(Lang.t(context, 'english'), style: const TextStyle(color: Colors.white)),
+                ),
+              ],
+              onChanged: (String? newLang) async {
+                if (newLang != null) {
+                  await StorageService.saveLanguage(newLang);
+                  if (context.mounted) {
+                    MyApp.setLocale(context, Locale(newLang));
+                    onLanguageChanged();
+                  }
+                }
+              },
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ============================
 // Search Delegate
 // ============================
 class CitySearchDelegate extends SearchDelegate<City?> {
@@ -963,4 +1074,41 @@ class CitySearchDelegate extends SearchDelegate<City?> {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(
-            child: CircularProgressIndicator(color: App
+            child: CircularProgressIndicator(color: AppColors.primary),
+          );
+        }
+
+        if (snapshot.hasError) {
+          return Center(
+            child: Text(
+              Lang.t(context, 'noCitiesFound'),
+              style: const TextStyle(color: Colors.white70),
+            ),
+          );
+        }
+
+        final cities = snapshot.data ?? [];
+        if (cities.isEmpty) {
+          return Center(
+            child: Text(
+              Lang.t(context, 'noCitiesFound'),
+              style: const TextStyle(color: Colors.white70),
+            ),
+          );
+        }
+
+        return ListView.builder(
+          itemCount: cities.length,
+          itemBuilder: (context, index) {
+            final city = cities[index];
+            return ListTile(
+              title: Text(city.name, style: const TextStyle(color: Colors.white)),
+              subtitle: Text(city.country, style: const TextStyle(color: Colors.white70)),
+              onTap: () => close(context, city),
+            );
+          },
+        );
+      },
+    );
+  }
+}
