@@ -538,18 +538,23 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void initState() {
     super.initState();
-    
-    // طلب الصلاحيات فور فتح الصفحة الرئيسية
-    NotificationService.requestPermissions();
+    _initializeApp();
 
-    loadInitialData();
-    
     // التحديث التلقائي كل دقيقة
     _timer = Timer.periodic(const Duration(minutes: 1), (_) {
       if (mounted) {
         setState(() {});
       }
     });
+  }
+
+  // التعديل الجوهري: إجبار إعادة جدولة الإشعارات فور تأكيد موافقة الصلاحية
+  Future<void> _initializeApp() async {
+    await loadInitialData();
+    await NotificationService.requestPermissions();
+    if (prayerTimes != null) {
+      _scheduleAllNotifications(prayerTimes!);
+    }
   }
 
   @override
