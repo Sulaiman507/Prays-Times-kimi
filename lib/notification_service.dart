@@ -30,7 +30,7 @@ class NotificationService {
     await _notificationsPlugin.initialize(initializationSettings);
   }
 
-  // 2. طلب صلاحيات الإشعارات (مهم جداً لأجهزة أندرويد 13 فما فوق و iOS)
+  // 2. طلب صلاحيات الإشعارات (مهم لأجهزة أندرويد 13+ و iOS)
   static Future<void> requestPermissions() async {
     await _notificationsPlugin
         .resolvePlatformSpecificImplementation<
@@ -38,8 +38,8 @@ class NotificationService {
         ?.requestNotificationsPermission();
   }
 
-  // 3. جدولة إشعار الأذان لكل صلاة
-  static Future<void> schedulePrayerNotification({
+  // 3. جدولة إشعار الأذان لكل صلاة (تم تعديل الاسم ليطابق main.dart)
+  static Future<void> scheduleNotification({
     required int id,
     required String title,
     required String body,
@@ -76,14 +76,13 @@ class NotificationService {
 
   // 4. جدولة تذكير يوم الجمعة (قبل صلاة الظهر/الجمعة بساعة)
   static Future<void> scheduleFridayReminder(DateTime dhuhrTime) async {
-    // التأكد أن اليوم هو الجمعة
     if (dhuhrTime.weekday == DateTime.friday) {
       final reminderTime = dhuhrTime.subtract(const Duration(hours: 1));
       final tzTime = tz.TZDateTime.from(reminderTime, tz.local);
 
       if (tzTime.isAfter(tz.TZDateTime.now(tz.local))) {
         await _notificationsPlugin.zonedSchedule(
-          99, // رقم ID خاص بتذكير الجمعة
+          99,
           'تذكير يوم الجمعة 🕌',
           'باقي ساعة على صلاة الجمعة، لا تنس قراءة سورة الكهف والصلاة على النبي ﷺ',
           tzTime,
@@ -105,7 +104,7 @@ class NotificationService {
     }
   }
 
-  // 5. إلغاء جميع الإشعارات (نحتاجها لإعادة الجدولة عند تحديث الموقع أو المواقيت)
+  // 5. إلغاء جميع الإشعارات
   static Future<void> cancelAll() async {
     await _notificationsPlugin.cancelAll();
   }
