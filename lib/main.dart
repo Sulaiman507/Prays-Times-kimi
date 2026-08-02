@@ -96,6 +96,11 @@ class Lang {
       'noCitiesFound': 'No cities found',
       'failedToLoadPrayerTimes': 'Failed to load prayer times',
       'noFavoritesYet': 'No favorites yet',
+      'timeFormat': 'Time Format',
+      'hours12': '12 Hours',
+      'hours24': '24 Hours',
+      'am': 'AM',
+      'pm': 'PM',
     },
     'ar': {
       'appName': 'مواقيت الصلاة',
@@ -119,6 +124,11 @@ class Lang {
       'noCitiesFound': 'لم يتم العثور على مدن',
       'failedToLoadPrayerTimes': 'فشل تحميل مواقيت الصلاة',
       'noFavoritesYet': 'لا توجد مفضلات بعد',
+      'timeFormat': 'نظام الوقت',
+      'hours12': '12 ساعة',
+      'hours24': '24 ساعة',
+      'am': 'ص',
+      'pm': 'م',
     },
   };
 
@@ -333,6 +343,7 @@ class StorageService {
   static const String _prayersKey = 'last_prayers';
   static const String _favoritesKey = 'favorites';
   static const String _langKey = 'language';
+  static const String _timeFormat24Key = 'is_24_hour';
 
   static SharedPreferences? _prefs;
 
@@ -400,6 +411,16 @@ class StorageService {
     final prefs = await _instance;
     return prefs.getString(_langKey) ?? 'ar';
   }
+
+  static Future<void> saveIs24Hour(bool value) async {
+    final prefs = await _instance;
+    await prefs.setBool(_timeFormat24Key, value);
+  }
+
+  static Future<bool> getIs24Hour() async {
+    final prefs = await _instance;
+    return prefs.getBool(_timeFormat24Key) ?? true; // الافتراضي 24 ساعة
+  }
 }
 
 // ============================
@@ -432,7 +453,6 @@ class PrayerApiService {
     }
   }
 
-  // استخدام OpenStreetMap Nominatim لضمان نتائج بحث سريعة ودقيقة باللغتين
   static Future<List<City>> searchCity(String query) async {
     if (query.trim().length < 2) return [];
     final encodedQuery = Uri.encodeQueryComponent(query.trim());
@@ -495,6 +515,7 @@ class _HomeScreenState extends State<HomeScreen>
   PrayerTimes? prayerTimes;
   List<City> favorites = [];
   bool isLoading = true;
+  bool is24Hour = true;
   String? error;
   int selectedNavIndex = 0;
 
@@ -513,9 +534,11 @@ class _HomeScreenState extends State<HomeScreen>
     final savedCity = await StorageService.getLastCity();
     final savedPrayers = await StorageService.getPrayers();
     final savedFavorites = await StorageService.getFavorites();
+    final savedIs24Hour = await StorageService.getIs24Hour();
 
     if (mounted) {
       setState(() {
+        is24Hour = savedIs24Hour;
         favorites = savedFavorites;
         if (savedCity != null) {
           currentCity = savedCity;
@@ -575,6 +598,25 @@ class _HomeScreenState extends State<HomeScreen>
     await StorageService.saveFavorites(favorites);
   }
 
+  // تحويل الوقت حسب نظام 12 / 24 ساعة
+  String _formatTime(String rawTime) {
+    if (rawTime == '--:--') return rawTime;
+    final clean = PrayerTimes._extractTime(rawTime);
+    if (is24Hour) return clean;
+
+    final parts = clean.split(':');
+    if (parts.length < 2) return clean;
+    int hour = int.tryParse(parts[0]) ?? 0;
+    final minute = parts[1];
+
+    final period = hour >= 12 ? Lang.t(context, 'pm') : Lang.t(context, 'am');
+    hour = hour % 12;
+    if (hour == 0) hour = 12;
+
+    final formattedHour = hour.toString().padLeft(2, '0');
+    return '$formattedHour:$minute $period';
+  }
+
   TimeOfDay? _parseTime(String time) {
     final clean = PrayerTimes._extractTime(time);
     final parts = clean.split(':');
@@ -620,7 +662,7 @@ class _HomeScreenState extends State<HomeScreen>
   String getNextPrayerText() {
     final next = _getNextPrayer();
     if (next == null) return '';
-    return '${next.name}: ${next.time}';
+    return '${next.name}: ${_formatTime(next.time)}';
   }
 
   String getNextPrayerKey() {
@@ -653,6 +695,10 @@ class _HomeScreenState extends State<HomeScreen>
               onCitySelected: refreshPrayerTimes,
             ),
             SettingsScreen(
+              is24Hour: is24Hour,
+              onTimeFormatChanged: (bool val) {
+                setState(() => is24Hour = val);
+              },
               onLanguageChanged: () => setState(() {}),
             ),
           ],
@@ -899,9 +945,9 @@ class _HomeScreenState extends State<HomeScreen>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    p.time,
+                    _formatTime(p.time),
                     style: GoogleFonts.cairo(
-                      fontSize: 22,
+                      fontSize: 20,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
                     ),
@@ -974,9 +1020,16 @@ class FavoritesScreen extends StatelessWidget {
 // Settings Screen
 // ============================
 class SettingsScreen extends StatelessWidget {
+  final bool is24Hour;
+  final ValueChanged<bool> onTimeFormatChanged;
   final VoidCallback onLanguageChanged;
 
-  const SettingsScreen({super.key, required this.onLanguageChanged});
+  const SettingsScreen({
+    super.key,
+    required this.is24Hour,
+    required this.onTimeFormatChanged,
+    required this.onLanguageChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -990,6 +1043,8 @@ class SettingsScreen extends StatelessWidget {
           style: GoogleFonts.cairo(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white),
         ),
         const SizedBox(height: 20),
+        
+        // خيار اللغة
         Card(
           color: AppColors.surface,
           child: ListTile(
@@ -1016,6 +1071,38 @@ class SettingsScreen extends StatelessWidget {
                     MyApp.setLocale(context, Locale(newLang));
                     onLanguageChanged();
                   }
+                }
+              },
+            ),
+          ),
+        ),
+        
+        const SizedBox(height: 10),
+
+        // خيار نظام الوقت (12/24)
+        Card(
+          color: AppColors.surface,
+          child: ListTile(
+            leading: const Icon(Icons.access_time, color: AppColors.primary),
+            title: Text(Lang.t(context, 'timeFormat'), style: const TextStyle(color: Colors.white)),
+            trailing: DropdownButton<bool>(
+              value: is24Hour,
+              dropdownColor: AppColors.surface,
+              underline: const SizedBox(),
+              items: [
+                DropdownMenuItem(
+                  value: false,
+                  child: Text(Lang.t(context, 'hours12'), style: const TextStyle(color: Colors.white)),
+                ),
+                DropdownMenuItem(
+                  value: true,
+                  child: Text(Lang.t(context, 'hours24'), style: const TextStyle(color: Colors.white)),
+                ),
+              ],
+              onChanged: (bool? newVal) async {
+                if (newVal != null) {
+                  await StorageService.saveIs24Hour(newVal);
+                  onTimeFormatChanged(newVal);
                 }
               },
             ),
