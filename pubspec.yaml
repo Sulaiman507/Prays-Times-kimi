@@ -1,6 +1,8 @@
-name: prays_times_kimi
-description: تطبيق مواقيت الصلاة
+name: prayer_times_app
+description: تطبيق مواقيت صلاة جميل ومتكامل
+
 publish_to: 'none'
+
 version: 1.0.0+1
 
 environment:
@@ -9,12 +11,24 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  cupertino_icons: ^1.0.6
-  http: ^1.1.0
-  shared_preferences: ^2.2.0
-  intl: ^0.18.0
-  flutter_svg: ^2.0.9
+  flutter_localizations:
+    sdk: flutter
+
+  # API & Networking
+  http: ^1.2.0
+
+  # Local Storage
+  shared_preferences: ^2.2.2
+
+  # Date & Time formatting
+  intl: ^0.19.0
+
+  # Beautiful Fonts
   google_fonts: ^6.1.0
+
+  # Location (اختياري - لاحقًا)
+  # geolocator: ^11.0.0
+  # geocoding: ^3.0.0
 
 dev_dependencies:
   flutter_test:
@@ -23,3 +37,10 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  fonts:
+    - family: Cairo
+      fonts:
+        - asset: assets/fonts/Cairo-Regular.ttf
+        - asset: assets/fonts/Cairo-Bold.ttf
+          weight: 700
