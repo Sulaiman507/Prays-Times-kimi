@@ -24,8 +24,12 @@ class AppColors {
 // ============================
 // Main Execution Entry Point
 // ============================
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // تهيئة خدمة الإشعارات المحلية
+  await NotificationService.init();
+  
   runApp(const MyApp());
 }
 
@@ -104,6 +108,8 @@ class Lang {
       'pm': 'PM',
       'athan': 'Athan',
       'iqamah': 'Iqamah',
+      'athanTitle': 'Prayer Time',
+      'athanBody': 'It is time for',
     },
     'ar': {
       'appName': 'مواقيت الصلاة',
@@ -134,6 +140,8 @@ class Lang {
       'pm': 'م',
       'athan': 'الأذان',
       'iqamah': 'الإقامة',
+      'athanTitle': 'حان وقت الصلاة',
+      'athanBody': 'حان الآن موعد أذان صلاة',
     },
   };
 
@@ -544,7 +552,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   @override
   void dispose() {
-    _timer?.cancel(); // منع تسريب الذاكرة
+    _timer?.cancel();
     super.dispose();
   }
 
@@ -556,7 +564,6 @@ class _HomeScreenState extends State<HomeScreen>
     final savedFavorites = await StorageService.getFavorites();
     final savedIs24Hour = await StorageService.getIs24Hour();
 
-    // تعيين مدينة جدة كمدينة افتراضية للمستخدم الجديد
     if (savedCity == null) {
       savedCity = const City(
         name: 'جدة',
@@ -592,7 +599,10 @@ class _HomeScreenState extends State<HomeScreen>
       final prayers = await PrayerApiService.fetchPrayerTimes(city);
       if (prayers != null) {
         await StorageService.savePrayers(prayers);
-        if (mounted) setState(() => prayerTimes = prayers);
+        if (mounted) {
+          setState(() => prayerTimes = prayers);
+          _scheduleAllNotifications(prayers);
+        }
       } else {
         if (mounted) {
           setState(() => error = Lang.t(context, 'failedToLoadPrayerTimes'));
@@ -602,6 +612,40 @@ class _HomeScreenState extends State<HomeScreen>
       if (mounted) setState(() => error = e.toString());
     } finally {
       if (mounted) setState(() => isLoading = false);
+    }
+  }
+
+  // جدولة الإشعارات لجميع الصلوات
+  void _scheduleAllNotifications(PrayerTimes pt) {
+    final now = DateTime.now();
+    final prayerList = [
+      (id: 1, name: Lang.t(context, 'fajr'), timeStr: pt.fajr),
+      (id: 2, name: Lang.t(context, 'dhuhr'), timeStr: pt.dhuhr),
+      (id: 3, name: Lang.t(context, 'asr'), timeStr: pt.asr),
+      (id: 4, name: Lang.t(context, 'maghrib'), timeStr: pt.maghrib),
+      (id: 5, name: Lang.t(context, 'isha'), timeStr: pt.isha),
+    ];
+
+    for (var p in prayerList) {
+      final parsedTime = _parseTime(p.timeStr);
+      if (parsedTime != null) {
+        final scheduledDateTime = DateTime(
+          now.year,
+          now.month,
+          now.day,
+          parsedTime.hour,
+          parsedTime.minute,
+        );
+
+        if (scheduledDateTime.isAfter(now)) {
+          NotificationService.scheduleNotification(
+            id: p.id,
+            title: '${Lang.t(context, 'athanTitle')}: ${p.name}',
+            body: '${Lang.t(context, 'athanBody')} ${p.name}',
+            scheduledTime: scheduledDateTime,
+          );
+        }
+      }
     }
   }
 
@@ -733,7 +777,10 @@ class _HomeScreenState extends State<HomeScreen>
             _buildHome(),
             FavoritesScreen(
               favorites: favorites,
-              onCitySelected: refreshPrayerTimes,
+              onCitySelected: (city) {
+                setState(() => selectedNavIndex = 0);
+                refreshPrayerTimes(city);
+              },
             ),
             SettingsScreen(
               is24Hour: is24Hour,
@@ -928,7 +975,6 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget _buildPrayersGrid(PrayerTimes pt) {
-    // فارق وقت الإقامة لكل صلاة (بالدقائق)
     final prayers = [
       (key: 'fajr', name: Lang.t(context, 'fajr'), time: pt.fajr, icon: Icons.wb_twilight, iqamahOffset: 25, isPrayer: true),
       (key: 'sunrise', name: Lang.t(context, 'sunrise'), time: pt.sunrise, icon: Icons.wb_sunny_outlined, iqamahOffset: 0, isPrayer: false),
@@ -1125,7 +1171,6 @@ class SettingsScreen extends StatelessWidget {
         ),
         const SizedBox(height: 20),
         
-        // خيار اللغة
         Card(
           color: AppColors.surface,
           child: ListTile(
@@ -1160,7 +1205,6 @@ class SettingsScreen extends StatelessWidget {
         
         const SizedBox(height: 10),
 
-        // خيار نظام الوقت (12/24)
         Card(
           color: AppColors.surface,
           child: ListTile(
