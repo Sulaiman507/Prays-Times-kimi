@@ -9,7 +9,6 @@ class NotificationService {
   // 1. تهيئة خدمة الإشعارات وتحديد المنطقة الزمنية
   static Future<void> init() async {
     tz.initializeTimeZones();
-    // ضبط المنطقة الزمنية (تلقائياً على توقيت الرياض / السعودية)
     tz.setLocalLocation(tz.getLocation('Asia/Riyadh'));
 
     const AndroidInitializationSettings initializationSettingsAndroid =
@@ -30,15 +29,19 @@ class NotificationService {
     await _notificationsPlugin.initialize(initializationSettings);
   }
 
-  // 2. طلب صلاحيات الإشعارات (مهم لأجهزة أندرويد 13+ و iOS)
+  // 2. طلب صلاحيات الإشعارات والمنبهات الدقيقة (مهم لأجهزة أندرويد 12 و13+ و iOS)
   static Future<void> requestPermissions() async {
-    await _notificationsPlugin
+    final androidImplementation = _notificationsPlugin
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.requestNotificationsPermission();
+            AndroidFlutterLocalNotificationsPlugin>();
+
+    if (androidImplementation != null) {
+      await androidImplementation.requestNotificationsPermission();
+      await androidImplementation.requestExactAlarmsPermission();
+    }
   }
 
-  // 3. جدولة إشعار الأذان لكل صلاة (تم تعديل الاسم ليطابق main.dart)
+  // 3. جدولة إشعار الأذان لكل صلاة
   static Future<void> scheduleNotification({
     required int id,
     required String title,
@@ -57,15 +60,18 @@ class NotificationService {
       tzTime,
       const NotificationDetails(
         android: AndroidNotificationDetails(
-          'prayer_channel',
+          'prayer_channel_id',
           'إشعارات الصلوات',
           channelDescription: 'إشعارات للتنبيه بمواعيد الأذان والصلاة',
           importance: Importance.max,
           priority: Priority.high,
           playSound: true,
+          enableVibration: true,
         ),
         iOS: DarwinNotificationDetails(
           presentSound: true,
+          presentAlert: true,
+          presentBadge: true,
         ),
       ),
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
@@ -74,7 +80,7 @@ class NotificationService {
     );
   }
 
-  // 4. جدولة تذكير يوم الجمعة (قبل صلاة الظهر/الجمعة بساعة)
+  // 4. جدولة تذكير يوم الجمعة (قبل صلاة الجمعة بساعة)
   static Future<void> scheduleFridayReminder(DateTime dhuhrTime) async {
     if (dhuhrTime.weekday == DateTime.friday) {
       final reminderTime = dhuhrTime.subtract(const Duration(hours: 1));
@@ -88,13 +94,17 @@ class NotificationService {
           tzTime,
           const NotificationDetails(
             android: AndroidNotificationDetails(
-              'friday_channel',
+              'friday_channel_id',
               'تنبيهات يوم الجمعة',
               channelDescription: 'تذكير بسُنن صلاة الجمعة',
               importance: Importance.high,
               priority: Priority.high,
+              playSound: true,
             ),
-            iOS: DarwinNotificationDetails(),
+            iOS: DarwinNotificationDetails(
+              presentSound: true,
+              presentAlert: true,
+            ),
           ),
           androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
           uiLocalNotificationDateInterpretation:
