@@ -8,70 +8,29 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 // ============================
-// App Constants
+// App Colors (Green Emerald Theme)
 // ============================
 class AppColors {
   AppColors._();
 
-  static const Color primary = Color(0xFF38BDF8);
-  static const Color primaryDark = Color(0xFF0EA5E9);
-  static const Color secondary = Color(0xFFF59E0B);
-  static const Color background = Color(0xFF0F172A);
-  static const Color surface = Color(0xFF1E293B);
+  static const Color primaryGreen = Color(0xFF2D7A5D);
+  static const Color darkGreen = Color(0xFF1B4D3E);
+  static const Color lightGreen = Color(0xFFE8F3EE);
+  static const Color accentGreen = Color(0xFF34C759);
+  static const Color background = Color(0xFFF4F7F5);
+  static const Color surface = Colors.white;
+  static const Color textDark = Color(0xFF1C274C);
+  static const Color textMuted = Color(0xFF8C98A8);
 }
 
-// ============================
-// Main Execution Entry Point
-// ============================
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const MyApp());
 }
 
 // ============================
-// Localization Setup
+// Localization & Helpers
 // ============================
-class AppLocalizations {
-  final Locale locale;
-
-  AppLocalizations(this.locale);
-
-  static AppLocalizations? of(BuildContext context) {
-    return Localizations.of<AppLocalizations>(context, AppLocalizations);
-  }
-
-  static const LocalizationsDelegate<AppLocalizations> delegate =
-      _AppLocalizationsDelegate();
-
-  late Map<String, String> _localizedStrings;
-
-  Future<bool> load() async {
-    _localizedStrings = Lang.texts[locale.languageCode] ?? Lang.texts['en']!;
-    return true;
-  }
-
-  String translate(String key) => _localizedStrings[key] ?? key;
-}
-
-class _AppLocalizationsDelegate
-    extends LocalizationsDelegate<AppLocalizations> {
-  const _AppLocalizationsDelegate();
-
-  @override
-  bool isSupported(Locale locale) => ['en', 'ar'].contains(locale.languageCode);
-
-  @override
-  Future<AppLocalizations> load(Locale locale) async {
-    final localizations = AppLocalizations(locale);
-    await localizations.load();
-    return localizations;
-  }
-
-  @override
-  bool shouldReload(_AppLocalizationsDelegate old) => false;
-}
-
-// Inline translations fallback
 class Lang {
   static const Map<String, Map<String, String>> texts = {
     'en': {
@@ -82,20 +41,13 @@ class Lang {
       'asr': 'Asr',
       'maghrib': 'Maghrib',
       'isha': 'Isha',
-      'searchCity': 'Search for a city...',
+      'searchCity': 'Search city...',
+      'nextPrayer': 'Next Prayer',
+      'todaySchedule': 'Today Schedule',
+      'umAlQura': 'Umm Al-Qura',
+      'noCitiesFound': 'No cities found',
       'favorites': 'Favorites',
       'settings': 'Settings',
-      'language': 'Language',
-      'arabic': 'Arabic',
-      'english': 'English',
-      'noData': 'No prayer times available',
-      'nextPrayer': 'Next Prayer',
-      'today': 'Today',
-      'addToFavorites': 'Add to Favorites',
-      'removeFromFavorites': 'Remove',
-      'noCitiesFound': 'No cities found',
-      'failedToLoadPrayerTimes': 'Failed to load prayer times',
-      'noFavoritesYet': 'No favorites yet',
     },
     'ar': {
       'appName': 'مواقيت الصلاة',
@@ -106,25 +58,18 @@ class Lang {
       'maghrib': 'المغرب',
       'isha': 'العشاء',
       'searchCity': 'ابحث عن مدينة...',
+      'nextPrayer': 'الصلاة القادمة',
+      'todaySchedule': 'جدول اليوم',
+      'umAlQura': 'أم القرى',
+      'noCitiesFound': 'لم يتم العثور على مدن',
       'favorites': 'المفضلة',
       'settings': 'الإعدادات',
-      'language': 'اللغة',
-      'arabic': 'العربية',
-      'english': 'English',
-      'noData': 'لا توجد مواقيت متاحة',
-      'nextPrayer': 'الصلاة القادمة',
-      'today': 'اليوم',
-      'addToFavorites': 'إضافة للمفضلة',
-      'removeFromFavorites': 'حذف',
-      'noCitiesFound': 'لم يتم العثور على مدن',
-      'failedToLoadPrayerTimes': 'فشل تحميل مواقيت الصلاة',
-      'noFavoritesYet': 'لا توجد مفضلات بعد',
     },
   };
 
   static String t(BuildContext context, String key) {
     final locale = Localizations.localeOf(context).languageCode;
-    return texts[locale]?[key] ?? texts['en']![key] ?? key;
+    return texts[locale]?[key] ?? texts['ar']![key] ?? key;
   }
 }
 
@@ -144,12 +89,7 @@ class City {
     required this.lng,
   });
 
-  Map<String, dynamic> toJson() => {
-        'name': name,
-        'country': country,
-        'lat': lat,
-        'lng': lng,
-      };
+  Map<String, dynamic> toJson() => {'name': name, 'country': country, 'lat': lat, 'lng': lng};
 
   factory City.fromJson(Map<String, dynamic> json) => City(
         name: (json['name'] ?? '').toString(),
@@ -164,17 +104,6 @@ class City {
     if (value is int) return value.toDouble();
     return double.tryParse(value.toString());
   }
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is City &&
-          runtimeType == other.runtimeType &&
-          name == other.name &&
-          country == other.country;
-
-  @override
-  int get hashCode => name.hashCode ^ country.hashCode;
 }
 
 class PrayerTimes {
@@ -199,288 +128,118 @@ class PrayerTimes {
   factory PrayerTimes.fromApi(Map<String, dynamic> data, String dateStr) {
     final timings = data['timings'] as Map<String, dynamic>? ?? {};
     return PrayerTimes(
-      fajr: _extractTime(timings['Fajr']),
-      sunrise: _extractTime(timings['Sunrise']),
-      dhuhr: _extractTime(timings['Dhuhr']),
-      asr: _extractTime(timings['Asr']),
-      maghrib: _extractTime(timings['Maghrib']),
-      isha: _extractTime(timings['Isha']),
+      fajr: _clean(timings['Fajr']),
+      sunrise: _clean(timings['Sunrise']),
+      dhuhr: _clean(timings['Dhuhr']),
+      asr: _clean(timings['Asr']),
+      maghrib: _clean(timings['Maghrib']),
+      isha: _clean(timings['Isha']),
       date: dateStr,
     );
   }
 
-  static String _extractTime(dynamic value) {
-    if (value == null) return '--:--';
-    final str = value.toString().trim();
+  static String _clean(dynamic v) {
+    if (v == null) return '00:00';
+    final str = v.toString().trim();
     final match = RegExp(r'^(\d{1,2}:\d{2})').firstMatch(str);
     return match?.group(1) ?? str;
   }
-
-  Map<String, dynamic> toJson() => {
-        'fajr': fajr,
-        'sunrise': sunrise,
-        'dhuhr': dhuhr,
-        'asr': asr,
-        'maghrib': maghrib,
-        'isha': isha,
-        'date': date,
-      };
-
-  factory PrayerTimes.fromJson(Map<String, dynamic> json) => PrayerTimes(
-        fajr: (json['fajr'] ?? '--:--').toString(),
-        sunrise: (json['sunrise'] ?? '--:--').toString(),
-        dhuhr: (json['dhuhr'] ?? '--:--').toString(),
-        asr: (json['asr'] ?? '--:--').toString(),
-        maghrib: (json['maghrib'] ?? '--:--').toString(),
-        isha: (json['isha'] ?? '--:--').toString(),
-        date: (json['date'] ?? '').toString(),
-      );
 }
 
 // ============================
-// Main App
+// Storage & API Services
 // ============================
-class MyApp extends StatefulWidget {
-  const MyApp({super.key});
+class StorageService {
+  static const String _cityKey = 'last_city';
 
-  static void setLocale(BuildContext context, Locale newLocale) {
-    final state = context.findAncestorStateOfType<_MyAppState>();
-    state?.setLocale(newLocale);
+  static Future<void> saveLastCity(City city) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_cityKey, jsonEncode(city.toJson()));
   }
 
-  @override
-  State<MyApp> createState() => _MyAppState();
-}
-
-class _MyAppState extends State<MyApp> {
-  Locale _locale = const Locale('ar');
-
-  void setLocale(Locale locale) {
-    if (_locale == locale) return;
-    setState(() => _locale = locale);
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _loadSavedLanguage();
-  }
-
-  Future<void> _loadSavedLanguage() async {
-    final lang = await StorageService.getLanguage();
-    if (mounted) {
-      setState(() => _locale = Locale(lang));
+  static Future<City?> getLastCity() async {
+    final prefs = await SharedPreferences.getInstance();
+    final str = prefs.getString(_cityKey);
+    if (str == null) return null;
+    try {
+      return City.fromJson(jsonDecode(str));
+    } catch (_) {
+      return null;
     }
   }
+}
+
+class PrayerApiService {
+  static final http.Client _client = http.Client();
+
+  static Future<PrayerTimes?> fetchPrayerTimes(City city) async {
+    final date = DateFormat('dd-MM-yyyy').format(DateTime.now());
+    final url = 'https://api.aladhan.com/v1/timings/$date?latitude=${city.lat}&longitude=${city.lng}&method=4';
+
+    try {
+      final response = await _client.get(Uri.parse(url)).timeout(const Duration(seconds: 12));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return PrayerTimes.fromApi(data['data'], date);
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  static Future<List<City>> searchCity(String query) async {
+    if (query.trim().length < 2) return [];
+    final encoded = Uri.encodeQueryComponent(query.trim());
+    final url = 'https://nominatim.openstreetmap.org/search?q=$encoded&format=json&addressdetails=1&accept-language=ar,en&limit=8';
+
+    try {
+      final response = await _client.get(Uri.parse(url), headers: {'User-Agent': 'PrayerApp/1.0'});
+      if (response.statusCode == 200) {
+        final List results = jsonDecode(response.body);
+        return results.map((item) {
+          final addr = item['address'] ?? {};
+          final name = addr['city'] ?? addr['town'] ?? addr['state'] ?? item['display_name'].toString().split(',').first;
+          return City(
+            name: name.toString(),
+            country: (addr['country'] ?? '').toString(),
+            lat: double.tryParse(item['lat'].toString()) ?? 0.0,
+            lng: double.tryParse(item['lon'].toString()) ?? 0.0,
+          );
+        }).toList();
+      }
+    } catch (_) {}
+    return [];
+  }
+}
+
+// ============================
+// Main App Entry
+// ============================
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Prayer Times',
-      locale: _locale,
-      supportedLocales: const [Locale('en'), Locale('ar')],
+      locale: const Locale('ar'),
+      supportedLocales: const [Locale('ar'), Locale('en')],
       localizationsDelegates: const [
-        AppLocalizations.delegate,
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      theme: _buildTheme(),
+      theme: ThemeData(
+        scaffoldBackgroundColor: AppColors.background,
+        textTheme: GoogleFonts.cairoTextTheme(),
+      ),
       home: const HomeScreen(),
     );
   }
-
-  ThemeData _buildTheme() {
-    return ThemeData(
-      useMaterial3: true,
-      brightness: Brightness.dark,
-      scaffoldBackgroundColor: AppColors.background,
-      colorScheme: const ColorScheme.dark(
-        primary: AppColors.primary,
-        secondary: AppColors.secondary,
-        surface: AppColors.surface,
-        onPrimary: Colors.white,
-        onSecondary: Colors.black,
-      ),
-      textTheme: GoogleFonts.cairoTextTheme(ThemeData.dark().textTheme),
-      cardTheme: CardThemeData(
-        elevation: 8,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-      ),
-      inputDecorationTheme: InputDecorationTheme(
-        filled: true,
-        fillColor: AppColors.surface,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide.none,
-        ),
-        hintStyle: const TextStyle(color: Colors.white60),
-      ),
-    );
-  }
 }
 
 // ============================
-// Storage Service
-// ============================
-class StorageService {
-  StorageService._();
-
-  static const String _cityKey = 'last_city';
-  static const String _prayersKey = 'last_prayers';
-  static const String _favoritesKey = 'favorites';
-  static const String _langKey = 'language';
-
-  static SharedPreferences? _prefs;
-
-  static Future<SharedPreferences> get _instance async {
-    _prefs ??= await SharedPreferences.getInstance();
-    return _prefs!;
-  }
-
-  static Future<void> saveLastCity(City city) async {
-    final prefs = await _instance;
-    await prefs.setString(_cityKey, jsonEncode(city.toJson()));
-  }
-
-  static Future<City?> getLastCity() async {
-    final prefs = await _instance;
-    final str = prefs.getString(_cityKey);
-    if (str == null || str.isEmpty) return null;
-    try {
-      return City.fromJson(jsonDecode(str) as Map<String, dynamic>);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  static Future<void> savePrayers(PrayerTimes prayers) async {
-    final prefs = await _instance;
-    await prefs.setString(_prayersKey, jsonEncode(prayers.toJson()));
-  }
-
-  static Future<PrayerTimes?> getPrayers() async {
-    final prefs = await _instance;
-    final str = prefs.getString(_prayersKey);
-    if (str == null || str.isEmpty) return null;
-    try {
-      return PrayerTimes.fromJson(jsonDecode(str) as Map<String, dynamic>);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  static Future<void> saveFavorites(List<City> cities) async {
-    final prefs = await _instance;
-    final list = cities.map((c) => c.toJson()).toList();
-    await prefs.setString(_favoritesKey, jsonEncode(list));
-  }
-
-  static Future<List<City>> getFavorites() async {
-    final prefs = await _instance;
-    final str = prefs.getString(_favoritesKey);
-    if (str == null || str.isEmpty) return [];
-    try {
-      final list = jsonDecode(str) as List<dynamic>;
-      return list.map((e) => City.fromJson(e as Map<String, dynamic>)).toList();
-    } catch (_) {
-      return [];
-    }
-  }
-
-  static Future<void> saveLanguage(String lang) async {
-    final prefs = await _instance;
-    await prefs.setString(_langKey, lang);
-  }
-
-  static Future<String> getLanguage() async {
-    final prefs = await _instance;
-    return prefs.getString(_langKey) ?? 'ar';
-  }
-}
-
-// ============================
-// API Service
-// ============================
-class PrayerApiService {
-  PrayerApiService._();
-
-  static final http.Client _client = http.Client();
-
-  static Future<PrayerTimes?> fetchPrayerTimes(City city) async {
-    final date = DateFormat('dd-MM-yyyy').format(DateTime.now());
-    final url =
-        'https://api.aladhan.com/v1/timings/$date?latitude=${city.lat}&longitude=${city.lng}&method=4';
-
-    try {
-      final response = await _client
-          .get(Uri.parse(url))
-          .timeout(const Duration(seconds: 15));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        return PrayerTimes.fromApi(data['data'], date);
-      }
-      return null;
-    } on TimeoutException {
-      return null;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  // استخدام OpenStreetMap Nominatim لضمان نتائج بحث سريعة ودقيقة باللغتين
-  static Future<List<City>> searchCity(String query) async {
-    if (query.trim().length < 2) return [];
-    final encodedQuery = Uri.encodeQueryComponent(query.trim());
-    
-    final url =
-        'https://nominatim.openstreetmap.org/search?q=$encodedQuery&format=json&addressdetails=1&accept-language=ar,en&limit=10';
-
-    try {
-      final response = await _client.get(
-        Uri.parse(url),
-        headers: {
-          'User-Agent': 'PrayerTimesApp/1.0',
-        },
-      ).timeout(const Duration(seconds: 10));
-
-      if (response.statusCode == 200) {
-        final List<dynamic> results = jsonDecode(response.body);
-        final List<City> cities = [];
-
-        for (var item in results) {
-          final address = item['address'] as Map<String, dynamic>? ?? {};
-          
-          final cityName = address['city'] ?? 
-                           address['town'] ?? 
-                           address['state'] ?? 
-                           address['municipality'] ?? 
-                           item['display_name'].toString().split(',').first;
-                           
-          final countryName = address['country'] ?? '';
-
-          cities.add(City(
-            name: cityName.toString(),
-            country: countryName.toString(),
-            lat: City._parseDouble(item['lat']) ?? 0.0,
-            lng: City._parseDouble(item['lon']) ?? 0.0,
-          ));
-        }
-        return cities;
-      }
-      return [];
-    } catch (_) {
-      return [];
-    }
-  }
-}
-
-// ============================
-// Home Screen
+// Home Screen (New Elegant Layout)
 // ============================
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -489,539 +248,391 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen>
-    with AutomaticKeepAliveClientMixin {
-  City? currentCity;
+class _HomeScreenState extends State<HomeScreen> {
+  City currentCity = const City(name: 'جدة', country: 'المملكة العربية السعودية', lat: 21.5433, lng: 39.1728);
   PrayerTimes? prayerTimes;
-  List<City> favorites = [];
   bool isLoading = true;
-  String? error;
-  int selectedNavIndex = 0;
 
-  @override
-  bool get wantKeepAlive => true;
+  // Countdown timer variables
+  Timer? _timer;
+  Duration _timeRemaining = Duration.zero;
+  String _nextPrayerName = '';
+  String _nextPrayerTimeStr = '';
 
   @override
   void initState() {
     super.initState();
-    loadInitialData();
+    _initData();
+    _startCountdownTimer();
   }
 
-  Future<void> loadInitialData() async {
-    if (mounted) setState(() => isLoading = true);
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
 
+  Future<void> _initData() async {
     final savedCity = await StorageService.getLastCity();
-    final savedPrayers = await StorageService.getPrayers();
-    final savedFavorites = await StorageService.getFavorites();
-
-    if (mounted) {
-      setState(() {
-        favorites = savedFavorites;
-        if (savedCity != null) {
-          currentCity = savedCity;
-          prayerTimes = savedPrayers;
-        }
-      });
-    }
-
     if (savedCity != null) {
-      await refreshPrayerTimes(savedCity);
-    } else if (mounted) {
-      setState(() => isLoading = false);
+      currentCity = savedCity;
     }
+    await _loadPrayerTimes();
   }
 
-  Future<void> refreshPrayerTimes(City city) async {
+  Future<void> _loadPrayerTimes() async {
+    setState(() => isLoading = true);
+    final times = await PrayerApiService.fetchPrayerTimes(currentCity);
     if (mounted) {
       setState(() {
-        currentCity = city;
-        isLoading = true;
-        error = null;
+        prayerTimes = times;
+        isLoading = false;
       });
-    }
-
-    try {
-      final prayers = await PrayerApiService.fetchPrayerTimes(city);
-      if (prayers != null) {
-        await StorageService.savePrayers(prayers);
-        if (mounted) setState(() => prayerTimes = prayers);
-      } else {
-        if (mounted) {
-          setState(() => error = Lang.t(context, 'failedToLoadPrayerTimes'));
-        }
-      }
-    } catch (e) {
-      if (mounted) setState(() => error = e.toString());
-    } finally {
-      if (mounted) setState(() => isLoading = false);
+      _updateNextPrayerCountdown();
     }
   }
 
-  bool get isFavorite =>
-      currentCity != null &&
-      favorites.any((c) =>
-          c.name == currentCity!.name && c.country == currentCity!.country);
-
-  Future<void> toggleFavorite() async {
-    if (currentCity == null) return;
-    setState(() {
-      if (isFavorite) {
-        favorites.removeWhere((c) =>
-            c.name == currentCity!.name && c.country == currentCity!.country);
-      } else {
-        favorites.add(currentCity!);
-      }
+  void _startCountdownTimer() {
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      _updateNextPrayerCountdown();
     });
-    await StorageService.saveFavorites(favorites);
   }
 
-  TimeOfDay? _parseTime(String time) {
-    final clean = PrayerTimes._extractTime(time);
-    final parts = clean.split(':');
-    if (parts.length < 2) return null;
-    final hour = int.tryParse(parts[0]);
-    final minute = int.tryParse(parts[1]);
-    if (hour == null || minute == null) return null;
-    return TimeOfDay(hour: hour, minute: minute);
-  }
+  void _updateNextPrayerCountdown() {
+    if (prayerTimes == null) return;
 
-  ({String key, String name, String time})? _getNextPrayer() {
-    if (prayerTimes == null) return null;
-
-    final now = TimeOfDay.now();
+    final now = DateTime.now();
     final prayers = [
-      (key: 'fajr', name: Lang.t(context, 'fajr'), time: prayerTimes!.fajr),
-      (key: 'dhuhr', name: Lang.t(context, 'dhuhr'), time: prayerTimes!.dhuhr),
-      (key: 'asr', name: Lang.t(context, 'asr'), time: prayerTimes!.asr),
-      (
-        key: 'maghrib',
-        name: Lang.t(context, 'maghrib'),
-        time: prayerTimes!.maghrib
-      ),
-      (key: 'isha', name: Lang.t(context, 'isha'), time: prayerTimes!.isha),
+      {'name': Lang.t(context, 'fajr'), 'time': prayerTimes!.fajr},
+      {'name': Lang.t(context, 'dhuhr'), 'time': prayerTimes!.dhuhr},
+      {'name': Lang.t(context, 'asr'), 'time': prayerTimes!.asr},
+      {'name': Lang.t(context, 'maghrib'), 'time': prayerTimes!.maghrib},
+      {'name': Lang.t(context, 'isha'), 'time': prayerTimes!.isha},
     ];
 
-    for (final p in prayers) {
-      final t = _parseTime(p.time);
-      if (t == null) continue;
-      if (t.hour > now.hour ||
-          (t.hour == now.hour && t.minute > now.minute)) {
-        return p;
+    for (var p in prayers) {
+      final parts = p['time']!.split(':');
+      final pDateTime = DateTime(now.year, now.month, now.day, int.parse(parts[0]), int.parse(parts[1]));
+
+      if (pDateTime.isAfter(now)) {
+        if (mounted) {
+          setState(() {
+            _nextPrayerName = p['name']!;
+            _nextPrayerTimeStr = p['time']!;
+            _timeRemaining = pDateTime.difference(now);
+          });
+        }
+        return;
       }
     }
 
-    return (
-      key: 'fajr',
-      name: Lang.t(context, 'fajr'),
-      time: prayerTimes!.fajr
-    );
+    // If all prayers passed today, target tomorrow Fajr
+    final parts = prayerTimes!.fajr.split(':');
+    final tomorrowFajr = DateTime(now.year, now.month, now.day + 1, int.parse(parts[0]), int.parse(parts[1]));
+    if (mounted) {
+      setState(() {
+        _nextPrayerName = Lang.t(context, 'fajr');
+        _nextPrayerTimeStr = prayerTimes!.fajr;
+        _timeRemaining = tomorrowFajr.difference(now);
+      });
+    }
   }
 
-  String getNextPrayerText() {
-    final next = _getNextPrayer();
-    if (next == null) return '';
-    return '${next.name}: ${next.time}';
-  }
-
-  String getNextPrayerKey() {
-    return _getNextPrayer()?.key ?? '';
+  String _formatDuration(Duration d) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final hours = twoDigits(d.inHours);
+    final minutes = twoDigits(d.inMinutes.remainder(60));
+    final seconds = twoDigits(d.inSeconds.remainder(60));
+    return "$hours:$minutes:$seconds";
   }
 
   void _openSearch() async {
-    final city = await showSearch<City?>(
+    final selectedCity = await showSearch<City?>(
       context: context,
       delegate: CitySearchDelegate(),
     );
-    if (city != null) {
-      await StorageService.saveLastCity(city);
-      await refreshPrayerTimes(city);
+    if (selectedCity != null) {
+      setState(() => currentCity = selectedCity);
+      await StorageService.saveLastCity(selectedCity);
+      await _loadPrayerTimes();
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    super.build(context);
-
     return Scaffold(
-      body: SafeArea(
-        child: IndexedStack(
-          index: selectedNavIndex,
+      body: SingleChildScrollView(
+        child: Column(
           children: [
-            _buildHome(),
-            FavoritesScreen(
-              favorites: favorites,
-              onCitySelected: refreshPrayerTimes,
-            ),
-            SettingsScreen(
-              onLanguageChanged: () => setState(() {}),
-            ),
-          ],
-        ),
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: selectedNavIndex,
-        onDestinationSelected: (index) => setState(() => selectedNavIndex = index),
-        backgroundColor: AppColors.surface,
-        indicatorColor: AppColors.primary.withOpacity(0.2),
-        destinations: [
-          NavigationDestination(
-            icon: const Icon(Icons.home_outlined),
-            selectedIcon: const Icon(Icons.home),
-            label: Lang.t(context, 'appName'),
-          ),
-          NavigationDestination(
-            icon: const Icon(Icons.favorite_outline),
-            selectedIcon: const Icon(Icons.favorite),
-            label: Lang.t(context, 'favorites'),
-          ),
-          NavigationDestination(
-            icon: const Icon(Icons.settings_outlined),
-            selectedIcon: const Icon(Icons.settings),
-            label: Lang.t(context, 'settings'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHome() {
-    return RefreshIndicator(
-      onRefresh: () async {
-        if (currentCity != null) await refreshPrayerTimes(currentCity!);
-      },
-      child: CustomScrollView(
-        slivers: [
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
+            _buildTopHeader(),
+            const SizedBox(height: 20),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildHeader(),
-                  const SizedBox(height: 24),
-                  _buildHeroCard(),
-                  const SizedBox(height: 28),
-                  _buildPrayerContent(),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        Lang.t(context, 'todaySchedule'),
+                        style: GoogleFonts.cairo(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textDark,
+                        ),
+                      ),
+                      Text(
+                        Lang.t(context, 'umAlQura'),
+                        style: GoogleFonts.cairo(
+                          fontSize: 14,
+                          color: AppColors.textMuted,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  isLoading
+                      ? const Center(child: Padding(
+                          padding: EdgeInsets.all(40.0),
+                          child: CircularProgressIndicator(color: AppColors.primaryGreen),
+                        ))
+                      : _buildPrayerList(),
                 ],
               ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHeader() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              Lang.t(context, 'appName'),
-              style: GoogleFonts.cairo(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-            Text(
-              DateFormat(
-                'EEEE, d MMMM',
-                Localizations.localeOf(context).languageCode,
-              ).format(DateTime.now()),
-              style: const TextStyle(color: Colors.white70),
             ),
           ],
         ),
-        IconButton(
-          onPressed: _openSearch,
-          icon: const Icon(Icons.search, color: Colors.white, size: 28),
-        ),
-      ],
+      ),
     );
   }
 
-  Widget _buildHeroCard() {
+  Widget _buildTopHeader() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(28),
-        gradient: const LinearGradient(
-          colors: [AppColors.primary, AppColors.primaryDark],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [AppColors.primaryGreen, AppColors.darkGreen],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
         ),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withOpacity(0.3),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(36)),
       ),
+      padding: const EdgeInsets.fromLTRB(20, 50, 20, 30),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Top Row Actions
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Expanded(
-                child: Text(
-                  currentCity?.name ?? Lang.t(context, 'searchCity'),
-                  style: GoogleFonts.cairo(
-                    fontSize: 26,
+              GestureDetector(
+                onTap: _openSearch,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.location_on, color: Colors.white, size: 18),
+                      const SizedBox(width: 6),
+                      Text(
+                        currentCity.name,
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Text('English 🗣️', style: TextStyle(color: Colors.white, fontSize: 12)),
+                  ),
+                  const SizedBox(width: 8),
+                  CircleAvatar(
+                    backgroundColor: Colors.white.withOpacity(0.15),
+                    radius: 18,
+                    child: const Icon(Icons.wb_sunny_outlined, color: Colors.white, size: 18),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 25),
+
+          // Next Prayer Banner
+          Text(
+            Lang.t(context, 'nextPrayer'),
+            style: const TextStyle(color: Colors.white70, fontSize: 14),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            _nextPrayerName.isEmpty ? '--' : _nextPrayerName,
+            style: GoogleFonts.cairo(
+              fontSize: 36,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Timer Pill
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(30),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.access_time, color: Colors.white70, size: 18),
+                const SizedBox(width: 8),
+                Text(
+                  _formatDuration(_timeRemaining),
+                  style: GoogleFonts.mono(
+                    fontSize: 22,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
                   ),
-                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-              if (currentCity != null)
-                IconButton(
-                  onPressed: toggleFavorite,
-                  icon: Icon(
-                    isFavorite ? Icons.favorite : Icons.favorite_border,
-                    color: Colors.white,
-                    size: 28,
-                  ),
-                ),
-            ],
+              ],
+            ),
           ),
+          const SizedBox(height: 10),
           Text(
-            currentCity?.country ?? '',
-            style: const TextStyle(color: Colors.white, fontSize: 16),
+            '$_nextPrayerName الساعة $_nextPrayerTimeStr م',
+            style: const TextStyle(color: Colors.white70, fontSize: 13),
           ),
-          const SizedBox(height: 24),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Text(
-              '${Lang.t(context, 'nextPrayer')}: ${getNextPrayerText()}',
-              style: GoogleFonts.cairo(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: Colors.white,
-              ),
-            ),
+          const SizedBox(height: 16),
+
+          // Date Badges
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _buildBadge(DateFormat('EEEE d MMMM yyyy', 'ar').format(DateTime.now())),
+              const SizedBox(width: 8),
+              _buildBadge('١٨ صفر ١٤٤٨ هـ'),
+            ],
           ),
         ],
       ),
     );
   }
 
-  Widget _buildPrayerContent() {
-    if (isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(color: AppColors.primary),
-      );
-    }
-    if (error != null) {
-      return Center(
-        child: Text(
-          error!,
-          style: const TextStyle(color: Colors.redAccent),
-        ),
-      );
-    }
-    if (prayerTimes == null) {
-      return Center(
-        child: Text(
-          Lang.t(context, 'noData'),
-          style: const TextStyle(color: Colors.white70),
-        ),
-      );
-    }
-    return _buildPrayersGrid(prayerTimes!);
+  Widget _buildBadge(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(color: Colors.white70, fontSize: 12),
+      ),
+    );
   }
 
-  Widget _buildPrayersGrid(PrayerTimes pt) {
+  Widget _buildPrayerList() {
+    if (prayerTimes == null) return const SizedBox();
+
     final prayers = [
-      (key: 'fajr', name: Lang.t(context, 'fajr'), time: pt.fajr, icon: Icons.wb_twilight),
-      (key: 'sunrise', name: Lang.t(context, 'sunrise'), time: pt.sunrise, icon: Icons.wb_sunny_outlined),
-      (key: 'dhuhr', name: Lang.t(context, 'dhuhr'), time: pt.dhuhr, icon: Icons.sunny),
-      (key: 'asr', name: Lang.t(context, 'asr'), time: pt.asr, icon: Icons.cloud),
-      (key: 'maghrib', name: Lang.t(context, 'maghrib'), time: pt.maghrib, icon: Icons.nights_stay_outlined),
-      (key: 'isha', name: Lang.t(context, 'isha'), time: pt.isha, icon: Icons.brightness_3),
+      {'key': 'fajr', 'name': Lang.t(context, 'fajr'), 'en': 'Fajr', 'time': prayerTimes!.fajr, 'icon': Icons.wb_twilight},
+      {'key': 'sunrise', 'name': Lang.t(context, 'sunrise'), 'en': 'Sunrise', 'time': prayerTimes!.sunrise, 'icon': Icons.wb_sunny_outlined},
+      {'key': 'dhuhr', 'name': Lang.t(context, 'dhuhr'), 'en': 'Dhuhr', 'time': prayerTimes!.dhuhr, 'icon': Icons.sunny},
+      {'key': 'asr', 'name': Lang.t(context, 'asr'), 'en': 'Asr', 'time': prayerTimes!.asr, 'icon': Icons.cloud_outlined},
+      {'key': 'maghrib', 'name': Lang.t(context, 'maghrib'), 'en': 'Maghrib', 'time': prayerTimes!.maghrib, 'icon': Icons.nights_stay_outlined},
+      {'key': 'isha', 'name': Lang.t(context, 'isha'), 'en': 'Isha', 'time': prayerTimes!.isha, 'icon': Icons.brightness_3_outlined},
     ];
 
-    return GridView.builder(
+    return ListView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        childAspectRatio: 1.1,
-        crossAxisSpacing: 14,
-        mainAxisSpacing: 14,
-      ),
       itemCount: prayers.length,
       itemBuilder: (context, index) {
-        final p = prayers[index];
+        final item = prayers[index];
+        final isNext = item['name'] == _nextPrayerName;
+
         return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: Colors.white.withOpacity(0.05)),
-          ),
-          padding: const EdgeInsets.all(18),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Icon(p.icon, color: AppColors.primary, size: 28),
-                  if (p.key == getNextPrayerKey())
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: AppColors.secondary.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        Lang.t(context, 'nextPrayer'),
-                        style: const TextStyle(
-                          color: AppColors.secondary,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                ],
+            color: isNext ? AppColors.primaryGreen : AppColors.surface,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.03),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
               ),
+            ],
+          ),
+          child: Row(
+            children: [
+              // Left Notification Bell
+              CircleAvatar(
+                backgroundColor: isNext ? Colors.white.withOpacity(0.2) : AppColors.lightGreen,
+                radius: 18,
+                child: Icon(
+                  Icons.notifications_active_outlined,
+                  color: isNext ? Colors.white : AppColors.primaryGreen,
+                  size: 18,
+                ),
+              ),
+              const SizedBox(width: 14),
+
+              // Time
+              Text(
+                item['time'] as String,
+                style: GoogleFonts.cairo(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: isNext ? Colors.white : AppColors.textDark,
+                ),
+              ),
+              const SizedBox(width: 14),
+
+              // Names
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    p.time,
+                    item['name'] as String,
                     style: GoogleFonts.cairo(
-                      fontSize: 22,
+                      fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                      color: isNext ? Colors.white : AppColors.textDark,
                     ),
                   ),
                   Text(
-                    p.name,
-                    style: const TextStyle(color: Colors.white70, fontSize: 15),
+                    item['en'] as String,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isNext ? Colors.white70 : AppColors.textMuted,
+                    ),
                   ),
                 ],
+              ),
+              const Spacer(),
+
+              // Right Icon
+              Icon(
+                item['icon'] as IconData,
+                color: isNext ? Colors.white : AppColors.primaryGreen,
+                size: 24,
               ),
             ],
           ),
         );
       },
-    );
-  }
-}
-
-// ============================
-// Favorites Screen
-// ============================
-class FavoritesScreen extends StatelessWidget {
-  final List<City> favorites;
-  final Function(City) onCitySelected;
-
-  const FavoritesScreen({
-    super.key,
-    required this.favorites,
-    required this.onCitySelected,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    if (favorites.isEmpty) {
-      return Center(
-        child: Text(
-          Lang.t(context, 'noFavoritesYet'),
-          style: const TextStyle(color: Colors.white70, fontSize: 16),
-        ),
-      );
-    }
-
-    return ListView.builder(
-      padding: const EdgeInsets.all(20),
-      itemCount: favorites.length,
-      itemBuilder: (context, index) {
-        final city = favorites[index];
-        return Card(
-          color: AppColors.surface,
-          margin: const EdgeInsets.only(bottom: 12),
-          child: ListTile(
-            title: Text(
-              city.name,
-              style: GoogleFonts.cairo(color: Colors.white, fontWeight: FontWeight.bold),
-            ),
-            subtitle: Text(
-              city.country,
-              style: const TextStyle(color: Colors.white70),
-            ),
-            trailing: const Icon(Icons.arrow_forward_ios, color: AppColors.primary, size: 18),
-            onTap: () => onCitySelected(city),
-          ),
-        );
-      },
-    );
-  }
-}
-
-// ============================
-// Settings Screen
-// ============================
-class SettingsScreen extends StatelessWidget {
-  final VoidCallback onLanguageChanged;
-
-  const SettingsScreen({super.key, required this.onLanguageChanged});
-
-  @override
-  Widget build(BuildContext context) {
-    final currentLang = Localizations.localeOf(context).languageCode;
-
-    return ListView(
-      padding: const EdgeInsets.all(20),
-      children: [
-        Text(
-          Lang.t(context, 'settings'),
-          style: GoogleFonts.cairo(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white),
-        ),
-        const SizedBox(height: 20),
-        Card(
-          color: AppColors.surface,
-          child: ListTile(
-            leading: const Icon(Icons.language, color: AppColors.primary),
-            title: Text(Lang.t(context, 'language'), style: const TextStyle(color: Colors.white)),
-            trailing: DropdownButton<String>(
-              value: currentLang,
-              dropdownColor: AppColors.surface,
-              underline: const SizedBox(),
-              items: [
-                DropdownMenuItem(
-                  value: 'ar',
-                  child: Text(Lang.t(context, 'arabic'), style: const TextStyle(color: Colors.white)),
-                ),
-                DropdownMenuItem(
-                  value: 'en',
-                  child: Text(Lang.t(context, 'english'), style: const TextStyle(color: Colors.white)),
-                ),
-              ],
-              onChanged: (String? newLang) async {
-                if (newLang != null) {
-                  await StorageService.saveLanguage(newLang);
-                  if (context.mounted) {
-                    MyApp.setLocale(context, Locale(newLang));
-                    onLanguageChanged();
-                  }
-                }
-              },
-            ),
-          ),
-        ),
-      ],
     );
   }
 }
@@ -1059,7 +670,7 @@ class CitySearchDelegate extends SearchDelegate<City?> {
       return Center(
         child: Text(
           Lang.t(context, 'searchCity'),
-          style: const TextStyle(color: Colors.white60),
+          style: const TextStyle(color: AppColors.textMuted),
         ),
       );
     }
@@ -1068,16 +679,14 @@ class CitySearchDelegate extends SearchDelegate<City?> {
       future: PrayerApiService.searchCity(query),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(
-            child: CircularProgressIndicator(color: AppColors.primary),
-          );
+          return const Center(child: CircularProgressIndicator(color: AppColors.primaryGreen));
         }
 
         if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
           return Center(
             child: Text(
               Lang.t(context, 'noCitiesFound'),
-              style: const TextStyle(color: Colors.white70),
+              style: const TextStyle(color: AppColors.textMuted),
             ),
           );
         }
@@ -1089,9 +698,9 @@ class CitySearchDelegate extends SearchDelegate<City?> {
           itemBuilder: (context, index) {
             final city = cities[index];
             return ListTile(
-              title: Text(city.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-              subtitle: Text(city.country, style: const TextStyle(color: Colors.white70)),
-              leading: const Icon(Icons.location_city, color: AppColors.primary),
+              title: Text(city.name, style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textDark)),
+              subtitle: Text(city.country, style: const TextStyle(color: AppColors.textMuted)),
+              leading: const Icon(Icons.location_city, color: AppColors.primaryGreen),
               onTap: () => close(context, city),
             );
           },
