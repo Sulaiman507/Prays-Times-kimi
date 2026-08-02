@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'notification_service.dart';
 
 // ============================
 // App Constants
@@ -437,6 +438,7 @@ class PrayerApiService {
 
   static Future<PrayerTimes?> fetchPrayerTimes(City city) async {
     final date = DateFormat('dd-MM-yyyy').format(DateTime.now());
+    // طريقة الحساب (method=4) تعني جامعة أم القرى بمكة المكرمة
     final url =
         'https://api.aladhan.com/v1/timings/$date?latitude=${city.lat}&longitude=${city.lng}&method=4';
 
@@ -522,6 +524,7 @@ class _HomeScreenState extends State<HomeScreen>
   bool is24Hour = false;
   String? error;
   int selectedNavIndex = 0;
+  Timer? _timer;
 
   @override
   bool get wantKeepAlive => true;
@@ -530,32 +533,50 @@ class _HomeScreenState extends State<HomeScreen>
   void initState() {
     super.initState();
     loadInitialData();
+    
+    // التحديث التلقائي كل دقيقة لضمان انتقال مؤشر الصلاة القادمة تلقائياً
+    _timer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) {
+        setState(() {});
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel(); // منع تسريب الذاكرة
+    super.dispose();
   }
 
   Future<void> loadInitialData() async {
     if (mounted) setState(() => isLoading = true);
 
-    final savedCity = await StorageService.getLastCity();
+    City? savedCity = await StorageService.getLastCity();
     final savedPrayers = await StorageService.getPrayers();
     final savedFavorites = await StorageService.getFavorites();
     final savedIs24Hour = await StorageService.getIs24Hour();
+
+    // تعيين مدينة جدة كمدينة افتراضية للمستخدم الجديد
+    if (savedCity == null) {
+      savedCity = const City(
+        name: 'جدة',
+        country: 'المملكة العربية السعودية',
+        lat: 21.4858,
+        lng: 39.1925,
+      );
+      await StorageService.saveLastCity(savedCity);
+    }
 
     if (mounted) {
       setState(() {
         is24Hour = savedIs24Hour;
         favorites = savedFavorites;
-        if (savedCity != null) {
-          currentCity = savedCity;
-          prayerTimes = savedPrayers;
-        }
+        currentCity = savedCity;
+        prayerTimes = savedPrayers;
       });
     }
 
-    if (savedCity != null) {
-      await refreshPrayerTimes(savedCity);
-    } else if (mounted) {
-      setState(() => isLoading = false);
-    }
+    await refreshPrayerTimes(savedCity);
   }
 
   Future<void> refreshPrayerTimes(City city) async {
@@ -602,7 +623,6 @@ class _HomeScreenState extends State<HomeScreen>
     await StorageService.saveFavorites(favorites);
   }
 
-  // تحويل الوقت حسب نظام 12 / 24 ساعة
   String _formatTime(String rawTime) {
     if (rawTime == '--:--') return rawTime;
     final clean = PrayerTimes._extractTime(rawTime);
@@ -621,7 +641,6 @@ class _HomeScreenState extends State<HomeScreen>
     return '$formattedHour:$minute $period';
   }
 
-  // حساب وقت الإقامة بإضافة دقائق محددة للأذان
   String _calculateIqamah(String rawAthanTime, int offsetMinutes) {
     if (rawAthanTime == '--:--') return '--:--';
     final clean = PrayerTimes._extractTime(rawAthanTime);
