@@ -60,7 +60,6 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
   Map<String, String> _prayerTimes = {};
   String _gregorianDate = '';
 
-  // خريطة المدن مع الإحداثيات الجغرافية
   final Map<String, Map<String, dynamic>> _citiesData = {
     'Jeddah': {'name': 'جدة', 'lat': 21.5433, 'lng': 39.1728},
     'Makkah': {'name': 'مكة المكرمة', 'lat': 21.3891, 'lng': 39.8579},
@@ -93,12 +92,10 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
     await prefs.setString('saved_city', cityKey);
   }
 
-  // حساب المواقيت فورياً وأوفلاين بدون طلبات HTTP
   void _calculatePrayerTimes() {
     final cityInfo = _citiesData[_selectedCityKey] ?? _citiesData['Jeddah']!;
     final coordinates = Coordinates(cityInfo['lat'], cityInfo['lng']);
 
-    // تطبيق معيار أم القرى الرسمي في المملكة العربية السعودية
     final params = CalculationMethod.umm_al_qura.getParameters();
 
     final now = DateTime.now();
@@ -172,7 +169,6 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
           padding: const EdgeInsets.all(16.0),
           child: Column(
             children: [
-              // اختيار المدينة
               Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -220,8 +216,6 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-
-              // بطاقة التاريخ
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(16),
@@ -259,8 +253,6 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
                 ),
               ),
               const SizedBox(height: 20),
-
-              // قائمة مواقيت الصلاة
               Expanded(
                 child: ListView.separated(
                   itemCount: _prayerTimes.length,
