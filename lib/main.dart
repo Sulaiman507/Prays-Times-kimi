@@ -3,13 +3,10 @@ import 'package:google_fonts/google_fonts.dart';
 import 'notification_service.dart';
 
 void main() async {
-  // 1. ضمان تهيئة محرك فلاتر قبل استدعاء الخدمات
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 2. تهيئة خدمة الإشعارات وتحديد المنطقة الزمنية
+  // تهيئة الإشعارات وطلب الصلاحيات
   await NotificationService.init();
-
-  // 3. طلب صلاحيات الإشعارات والمنبهات (خاصة لأجهزة Android 12+)
   await NotificationService.requestPermissions();
 
   runApp(const PrayerTimesApp());
@@ -23,6 +20,16 @@ class PrayerTimesApp extends StatelessWidget {
     return MaterialApp(
       title: 'Serene Devotion',
       debugShowCheckedModeBanner: false,
+      locale: const Locale('ar', 'SA'),
+      supportedLocales: const [
+        Locale('ar', 'SA'),
+      ],
+      builder: (context, child) {
+        return Directionality(
+          textDirection: TextDirection.rtl,
+          child: child!,
+        );
+      },
       theme: ThemeData(
         brightness: Brightness.dark,
         scaffoldBackgroundColor: const Color(0xFF0F172A),
@@ -42,6 +49,25 @@ class PrayerTimesScreen extends StatefulWidget {
 
 class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
   int _selectedIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _testInstantNotification();
+  }
+
+  // تجربة إرسال إشعار تجريبي فور فتح التطبيق بعد 5 ثوانٍ لتأكيد أنه شغال
+  void _testInstantNotification() async {
+    await NotificationService.cancelAll();
+    
+    final now = DateTime.now();
+    await NotificationService.scheduleNotification(
+      id: 99,
+      title: 'تجربة الإشعارات 🕌',
+      body: 'إذا وصلك هذا الإشعار فالتطبيق يعمل بشكل صحيح!',
+      scheduledTime: now.add(const Duration(seconds: 5)),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -119,7 +145,7 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
               Row(
                 children: [
                   Text(
-                    'London, UK',
+                    'جدة، السعودية',
                     style: GoogleFonts.manrope(
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
@@ -136,7 +162,7 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'January 2024 26',
+                '26 يناير 2024',
                 style: GoogleFonts.manrope(
                   color: Colors.white54,
                   fontSize: 14,
@@ -171,7 +197,7 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
           ),
         ),
         Column(
-          mainAxisSize: MainAxisSize.min, // تم تصحيح الخطأ هنا
+          mainAxisSize: MainAxisSize.min,
           children: [
             Text(
               'متبقي على صلاة الظهر',
@@ -275,10 +301,10 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _navItem(0, Icons.home_filled, 'Home'),
-          _navItem(1, Icons.explore_outlined, 'Qibla'),
-          _navItem(2, Icons.menu_book_outlined, 'Azkar'),
-          _navItem(3, Icons.settings_outlined, 'Settings'),
+          _navItem(0, Icons.home_filled, 'الرئيسية'),
+          _navItem(1, Icons.explore_outlined, 'القبلة'),
+          _navItem(2, Icons.menu_book_outlined, 'الأذكار'),
+          _navItem(3, Icons.settings_outlined, 'الإعدادات'),
         ],
       ),
     );
@@ -295,7 +321,7 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
-          mainAxisSize: MainAxisSize.min, // تم تصحيح الخطأ هنا أيضاً
+          mainAxisSize: MainAxisSize.min,
           children: [
             Icon(icon, color: isSelected ? Colors.amber : Colors.white38),
             const SizedBox(height: 4),
