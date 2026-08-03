@@ -6,7 +6,6 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
 
     <application
         android:label="prays_times_kimi"
@@ -34,7 +33,7 @@
         <!-- مستقبل الإشعارات والمواعيد عند إعادة تشغيل الجهاز -->
         <receiver android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" android:exported="false" />
         
-        <!-- تم تغيير exported إلى true هنا لكي يستقبل أحداث إعادة التشغيل من النظام -->
+        <!-- مستقبل إعادات التشغيل للتنبيهات -->
         <receiver android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED"/>
