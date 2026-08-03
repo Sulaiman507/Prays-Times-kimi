@@ -5,11 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:adhan/adhan.dart';
 import 'package:intl/intl.dart';
 
-import 'notification_service.dart';
-
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await NotificationService.init();
   runApp(const PrayerTimesApp());
 }
 
@@ -75,7 +72,6 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
   }
 
   Future<void> _initializeApp() async {
-    await NotificationService.requestPermissions();
     await _loadSavedCity();
     _calculatePrayerTimes();
   }
@@ -116,42 +112,6 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
 
       _gregorianDate = DateFormat('EEEE، d MMMM yyyy', 'ar').format(now);
     });
-
-    _scheduleNotificationsOffline(prayerTimes);
-  }
-
-  Future<void> _scheduleNotificationsOffline(PrayerTimes prayerTimes) async {
-    await NotificationService.cancelAll();
-
-    final cityName = _citiesData[_selectedCityKey]?['name'] ?? 'مدينتك';
-    final now = DateTime.now();
-
-    final List<Map<String, dynamic>> prayers = [
-      {'id': 1, 'name': 'الفجر', 'time': prayerTimes.fajr},
-      {'id': 2, 'name': 'الظهر', 'time': prayerTimes.dhuhr},
-      {'id': 3, 'name': 'العصر', 'time': prayerTimes.asr},
-      {'id': 4, 'name': 'المغرب', 'time': prayerTimes.maghrib},
-      {'id': 5, 'name': 'العشاء', 'time': prayerTimes.isha},
-    ];
-
-    for (var prayer in prayers) {
-      DateTime scheduledDate = prayer['time'];
-
-      if (scheduledDate.isBefore(now)) {
-        scheduledDate = scheduledDate.add(const Duration(days: 1));
-      }
-
-      await NotificationService.scheduleNotification(
-        id: prayer['id'],
-        title: 'حان الآن موعد صلاة ${prayer['name']}',
-        body: 'الله أكبر، حان وقت أذان صلاة ${prayer['name']} في $cityName',
-        scheduledTime: scheduledDate,
-      );
-
-      if (prayer['name'] == 'الظهر') {
-        await NotificationService.scheduleFridayReminder(scheduledDate);
-      }
-    }
   }
 
   @override
