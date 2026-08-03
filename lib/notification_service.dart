@@ -34,8 +34,8 @@ class NotificationService {
             AndroidFlutterLocalNotificationsPlugin>();
 
     if (androidImplementation != null) {
-      // ✅ التحديث للإصدارات الحديثة
-      await androidImplementation.requestPermission();
+      // الدالة الصحيحة المتوافقة مع flutter_local_notifications 17.x
+      await androidImplementation.requestNotificationsPermission();
       await androidImplementation.requestExactAlarmsPermission();
     }
   }
@@ -84,7 +84,7 @@ class NotificationService {
 
       if (tzTime.isAfter(tz.TZDateTime.now(tz.local))) {
         await _notificationsPlugin.zonedSchedule(
-          88, // ✅ تغيير ID لتجنب التعارض مع الإشعار التجريبي 99
+          88,
           'تذكير يوم الجمعة 🕌',
           'باقي ساعة على صلاة الجمعة، لا تنس قراءة سورة الكهف والصلاة على النبي ﷺ',
           tzTime,
