@@ -9,10 +9,12 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        // تفعيل Desugaring لمكتبة الإشعارات والمنبهات Exact Alarms
         isCoreLibraryDesugaringEnabled = true
 
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+        // رفع الإصدار إلى Java 17 لمنع أخطاء بناء Desugaring
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     defaultConfig {
@@ -22,7 +24,6 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
 
-        // دعم MultiDex لحل مشكلة توقف البناء مع مكتبات الإشعارات
         multiDexEnabled = true
     }
 
@@ -35,7 +36,7 @@ android {
 
 kotlin {
     compilerOptions {
-        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
 }
 
