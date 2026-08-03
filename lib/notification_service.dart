@@ -34,7 +34,8 @@ class NotificationService {
             AndroidFlutterLocalNotificationsPlugin>();
 
     if (androidImplementation != null) {
-      await androidImplementation.requestNotificationsPermission();
+      // ✅ التحديث للإصدارات الحديثة
+      await androidImplementation.requestPermission();
       await androidImplementation.requestExactAlarmsPermission();
     }
   }
@@ -83,7 +84,7 @@ class NotificationService {
 
       if (tzTime.isAfter(tz.TZDateTime.now(tz.local))) {
         await _notificationsPlugin.zonedSchedule(
-          99,
+          88, // ✅ تغيير ID لتجنب التعارض مع الإشعار التجريبي 99
           'تذكير يوم الجمعة 🕌',
           'باقي ساعة على صلاة الجمعة، لا تنس قراءة سورة الكهف والصلاة على النبي ﷺ',
           tzTime,
