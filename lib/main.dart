@@ -9,10 +9,7 @@ import 'notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // تهيئة الإشعارات والمناطق الزمنية
   await NotificationService.init();
-  
   runApp(const PrayerTimesApp());
 }
 
@@ -24,7 +21,6 @@ class PrayerTimesApp extends StatelessWidget {
     return MaterialApp(
       title: 'مواقيت الصلاة',
       debugShowCheckedModeBanner: false,
-      // ضبط اللغة العربية والاتجاه من اليمين إلى اليسار
       locale: const Locale('ar', 'SA'),
       supportedLocales: const [
         Locale('ar', 'SA'),
@@ -60,21 +56,20 @@ class PrayerTimesScreen extends StatefulWidget {
 }
 
 class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
-  String _selectedCity = 'Jeddah';
-  String _selectedCountry = 'Saudi Arabia';
-  
+  String _selectedCityKey = 'Jeddah';
   bool _isLoading = true;
   String? _errorMessage;
   Map<String, String> _prayerTimes = {};
   String _hijriDate = '';
   String _gregorianDate = '';
 
-  final Map<String, String> _citiesMap = {
-    'Jeddah': 'جدة',
-    'Makkah': 'مكة المكرمة',
-    'Madinah': 'المدينة المنورة',
-    'Riyadh': 'الرياض',
-    'Dammam': 'الدمام',
+  // خريطة المدن مع أسمائها بالإيجاز وإحداثياتها الجغرافية لضمان عدم حدوث أي خطأ في API
+  final Map<String, Map<String, dynamic>> _citiesData = {
+    'Jeddah': {'name': 'جدة', 'lat': 21.5433, 'lng': 39.1728},
+    'Makkah': {'name': 'مكة المكرمة', 'lat': 21.3891, 'lng': 39.8579},
+    'Madinah': {'name': 'المدينة المنورة', 'lat': 24.5247, 'lng': 39.5692},
+    'Riyadh': {'name': 'الرياض', 'lat': 24.7136, 'lng': 46.6753},
+    'Dammam': {'name': 'الدمام', 'lat': 26.4207, 'lng': 50.0888},
   };
 
   @override
@@ -84,7 +79,6 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
   }
 
   Future<void> _initializeApp() async {
-    // طلب صلاحيات الإشعارات على نظام أندرويد
     await NotificationService.requestPermissions();
     await _loadSavedCity();
     await fetchPrayerTimes();
@@ -93,13 +87,13 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
   Future<void> _loadSavedCity() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-      _selectedCity = prefs.getString('saved_city') ?? 'Jeddah';
+      _selectedCityKey = prefs.getString('saved_city') ?? 'Jeddah';
     });
   }
 
-  Future<void> _saveCity(String city) async {
+  Future<void> _saveCity(String cityKey) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('saved_city', city);
+    await prefs.setString('saved_city', cityKey);
   }
 
   Future<void> fetchPrayerTimes() async {
@@ -109,15 +103,13 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
     });
 
     try {
-      final now = DateTime.now();
-      
-      // صياغة التاريخ بصيغة DD-MM-YYYY المطلوبة من الـ API
-      final String day = now.day.toString().padLeft(2, '0');
-      final String month = now.month.toString().padLeft(2, '0');
-      final String year = now.year.toString();
+      final cityInfo = _citiesData[_selectedCityKey] ?? _citiesData['Jeddah']!;
+      final double lat = cityInfo['lat'];
+      final double lng = cityInfo['lng'];
 
+      // استخدام API الإحداثيات المباشر المستقر جداً عبر طريقة أم القرى (method=4)
       final url = Uri.parse(
-        'https://api.aladhan.com/v1/timingsByCity/$day-$month-$year?city=$_selectedCity&country=$_selectedCountry&method=4',
+        'https://api.aladhan.com/v1/timings?latitude=$lat&longitude=$lng&method=4',
       );
 
       final response = await http.get(
@@ -142,22 +134,22 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
             'المغرب': timings['Maghrib'],
             'العشاء': timings['Isha'],
           };
-          
+
           final hijri = dateData['hijri'];
           _hijriDate =
               '${hijri['day']} ${hijri['month']['ar']} ${hijri['year']} هـ';
-          
+
           final gregorian = dateData['gregorian'];
-          _gregorianDate = '${gregorian['day']} ${gregorian['month']['en']} ${gregorian['year']} م';
-          
+          _gregorianDate =
+              '${gregorian['day']} ${gregorian['month']['en']} ${gregorian['year']} م';
+
           _isLoading = false;
         });
 
-        // جدولة الإشعارات بعد جلب المواقيت بنجاح
         await _scheduleNotifications(timings);
       } else {
         setState(() {
-          _errorMessage = 'خطأ في الاستجابة من الخادم (رمز: ${response.statusCode})';
+          _errorMessage = 'تعذر جلب المواقيت (رمز: ${response.statusCode})';
           _isLoading = false;
         });
       }
@@ -181,6 +173,8 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
       5: {'name': 'العشاء', 'time': timings['Isha']},
     };
 
+    final cityName = _citiesData[_selectedCityKey]?['name'] ?? 'مدينتك';
+
     prayers.forEach((id, info) async {
       final timeParts = (info['time'] as String).split(':');
       final hour = int.parse(timeParts[0]);
@@ -194,7 +188,6 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
         minute,
       );
 
-      // إذا مر وقت الصلاة اليوم، نجدولها ليوم غد
       if (scheduledDate.isBefore(now)) {
         scheduledDate = scheduledDate.add(const Duration(days: 1));
       }
@@ -202,11 +195,10 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
       await NotificationService.scheduleNotification(
         id: id,
         title: 'حان الآن موعد صلاة ${info['name']}',
-        body: 'الله أكبر، حان وقت أذان صلاة ${info['name']} في ${_citiesMap[_selectedCity]}',
+        body: 'الله أكبر، حان وقت أذان صلاة ${info['name']} في $cityName',
         scheduledTime: scheduledDate,
       );
 
-      // إذا كانت الصلاة هي صلاة الظهر، نقوم بجدولة تذكير الجمعة
       if (info['name'] == 'الظهر') {
         await NotificationService.scheduleFridayReminder(scheduledDate);
       }
@@ -217,7 +209,8 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('مواقيت الصلاة', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('مواقيت الصلاة',
+            style: TextStyle(fontWeight: FontWeight.bold)),
         centerTitle: true,
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -236,7 +229,8 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
             children: [
               // اختيار المدينة
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                 decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.surface,
                   borderRadius: BorderRadius.circular(16),
@@ -249,24 +243,27 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
                       children: [
                         Icon(Icons.location_on, color: Color(0xFF10B981)),
                         SizedBox(width: 8),
-                        Text('المدينة:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        Text('المدينة:',
+                            style: TextStyle(
+                                fontSize: 16, fontWeight: FontWeight.bold)),
                       ],
                     ),
                     DropdownButtonHideUnderline(
                       child: DropdownButton<String>(
-                        value: _selectedCity,
+                        value: _selectedCityKey,
                         icon: const Icon(Icons.keyboard_arrow_down),
                         dropdownColor: Theme.of(context).colorScheme.surface,
-                        items: _citiesMap.entries.map((entry) {
+                        items: _citiesData.entries.map((entry) {
                           return DropdownMenuItem<String>(
                             value: entry.key,
-                            child: Text(entry.value, style: const TextStyle(fontSize: 16)),
+                            child: Text(entry.value['name'],
+                                style: const TextStyle(fontSize: 16)),
                           );
                         }).toList(),
                         onChanged: (String? newValue) {
-                          if (newValue != null && newValue != _selectedCity) {
+                          if (newValue != null && newValue != _selectedCityKey) {
                             setState(() {
-                              _selectedCity = newValue;
+                              _selectedCityKey = newValue;
                             });
                             _saveCity(newValue);
                             fetchPrayerTimes();
@@ -331,9 +328,12 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                const Icon(Icons.error_outline, size: 48, color: Colors.redAccent),
+                                const Icon(Icons.error_outline,
+                                    size: 48, color: Colors.redAccent),
                                 const SizedBox(height: 8),
-                                Text(_errorMessage!, style: const TextStyle(color: Colors.white70)),
+                                Text(_errorMessage!,
+                                    style:
+                                        const TextStyle(color: Colors.white70)),
                                 const SizedBox(height: 16),
                                 ElevatedButton(
                                   onPressed: fetchPrayerTimes,
@@ -344,10 +344,12 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
                           )
                         : ListView.separated(
                             itemCount: _prayerTimes.length,
-                            separatorBuilder: (context, index) => const SizedBox(height: 10),
+                            separatorBuilder: (context, index) =>
+                                const SizedBox(height: 10),
                             itemBuilder: (context, index) {
                               final name = _prayerTimes.keys.elementAt(index);
-                              final time = _prayerTimes.values.elementAt(index);
+                              final time =
+                                  _prayerTimes.values.elementAt(index);
                               final isSunrise = name == 'الشروق';
 
                               return Container(
@@ -362,10 +364,15 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
                                   leading: CircleAvatar(
                                     backgroundColor: isSunrise
                                         ? Colors.orange.withOpacity(0.2)
-                                        : const Color(0xFF10B981).withOpacity(0.2),
+                                        : const Color(0xFF10B981)
+                                            .withOpacity(0.2),
                                     child: Icon(
-                                      isSunrise ? Icons.wb_sunny : Icons.access_time_filled,
-                                      color: isSunrise ? Colors.orange : const Color(0xFF10B981),
+                                      isSunrise
+                                          ? Icons.wb_sunny
+                                          : Icons.access_time_filled,
+                                      color: isSunrise
+                                          ? Colors.orange
+                                          : const Color(0xFF10B981),
                                     ),
                                   ),
                                   title: Text(
@@ -380,7 +387,9 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
                                     style: TextStyle(
                                       fontSize: 18,
                                       fontWeight: FontWeight.w600,
-                                      color: isSunrise ? Colors.orange : const Color(0xFF10B981),
+                                      color: isSunrise
+                                          ? Colors.orange
+                                          : const Color(0xFF10B981),
                                     ),
                                   ),
                                 ),
