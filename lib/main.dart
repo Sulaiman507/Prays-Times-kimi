@@ -1,9 +1,9 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:adhan/adhan.dart';
+import 'package:intl/intl.dart';
 
 import 'notification_service.dart';
 
@@ -57,13 +57,10 @@ class PrayerTimesScreen extends StatefulWidget {
 
 class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
   String _selectedCityKey = 'Jeddah';
-  bool _isLoading = true;
-  String? _errorMessage;
   Map<String, String> _prayerTimes = {};
-  String _hijriDate = '';
   String _gregorianDate = '';
 
-  // خريطة المدن مع أسمائها بالإيجاز وإحداثياتها الجغرافية لضمان عدم حدوث أي خطأ في API
+  // خريطة المدن مع الإحداثيات الجغرافية
   final Map<String, Map<String, dynamic>> _citiesData = {
     'Jeddah': {'name': 'جدة', 'lat': 21.5433, 'lng': 39.1728},
     'Makkah': {'name': 'مكة المكرمة', 'lat': 21.3891, 'lng': 39.8579},
@@ -81,7 +78,7 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
   Future<void> _initializeApp() async {
     await NotificationService.requestPermissions();
     await _loadSavedCity();
-    await fetchPrayerTimes();
+    _calculatePrayerTimes();
   }
 
   Future<void> _loadSavedCity() async {
@@ -96,113 +93,68 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
     await prefs.setString('saved_city', cityKey);
   }
 
-  Future<void> fetchPrayerTimes() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
+  // حساب المواقيت فورياً وأوفلاين بدون طلبات HTTP
+  void _calculatePrayerTimes() {
+    final cityInfo = _citiesData[_selectedCityKey] ?? _citiesData['Jeddah']!;
+    final coordinates = Coordinates(cityInfo['lat'], cityInfo['lng']);
 
-    try {
-      final cityInfo = _citiesData[_selectedCityKey] ?? _citiesData['Jeddah']!;
-      final double lat = cityInfo['lat'];
-      final double lng = cityInfo['lng'];
-
-      // استخدام API الإحداثيات المباشر المستقر جداً عبر طريقة أم القرى (method=4)
-      final url = Uri.parse(
-        'https://api.aladhan.com/v1/timings?latitude=$lat&longitude=$lng&method=4',
-      );
-
-      final response = await http.get(
-        url,
-        headers: {
-          'Accept': 'application/json',
-          'User-Agent': 'Mozilla/5.0',
-        },
-      );
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        final timings = data['data']['timings'];
-        final dateData = data['data']['date'];
-
-        setState(() {
-          _prayerTimes = {
-            'الفجر': timings['Fajr'],
-            'الشروق': timings['Sunrise'],
-            'الظهر': timings['Dhuhr'],
-            'العصر': timings['Asr'],
-            'المغرب': timings['Maghrib'],
-            'العشاء': timings['Isha'],
-          };
-
-          final hijri = dateData['hijri'];
-          _hijriDate =
-              '${hijri['day']} ${hijri['month']['ar']} ${hijri['year']} هـ';
-
-          final gregorian = dateData['gregorian'];
-          _gregorianDate =
-              '${gregorian['day']} ${gregorian['month']['en']} ${gregorian['year']} م';
-
-          _isLoading = false;
-        });
-
-        await _scheduleNotifications(timings);
-      } else {
-        setState(() {
-          _errorMessage = 'تعذر جلب المواقيت (رمز: ${response.statusCode})';
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      setState(() {
-        _errorMessage = 'تأكد من اتصالك بالإنترنت والتحقق من الإعدادات';
-        _isLoading = false;
-      });
-    }
-  }
-
-  Future<void> _scheduleNotifications(Map<String, dynamic> timings) async {
-    await NotificationService.cancelAll();
+    // تطبيق معيار أم القرى الرسمي في المملكة العربية السعودية
+    final params = CalculationMethod.umm_al_qura.getParameters();
 
     final now = DateTime.now();
-    final prayers = {
-      1: {'name': 'الفجر', 'time': timings['Fajr']},
-      2: {'name': 'الظهر', 'time': timings['Dhuhr']},
-      3: {'name': 'العصر', 'time': timings['Asr']},
-      4: {'name': 'المغرب', 'time': timings['Maghrib']},
-      5: {'name': 'العشاء', 'time': timings['Isha']},
-    };
+    final dateComponents = DateComponents(now.year, now.month, now.day);
+
+    final prayerTimes = PrayerTimes(coordinates, dateComponents, params);
+    final timeFormatter = DateFormat.jm('ar');
+
+    setState(() {
+      _prayerTimes = {
+        'الفجر': timeFormatter.format(prayerTimes.fajr),
+        'الشروق': timeFormatter.format(prayerTimes.sunrise),
+        'الظهر': timeFormatter.format(prayerTimes.dhuhr),
+        'العصر': timeFormatter.format(prayerTimes.asr),
+        'المغرب': timeFormatter.format(prayerTimes.maghrib),
+        'العشاء': timeFormatter.format(prayerTimes.isha),
+      };
+
+      _gregorianDate = DateFormat('EEEE، d MMMM yyyy', 'ar').format(now);
+    });
+
+    _scheduleNotificationsOffline(prayerTimes);
+  }
+
+  Future<void> _scheduleNotificationsOffline(PrayerTimes prayerTimes) async {
+    await NotificationService.cancelAll();
 
     final cityName = _citiesData[_selectedCityKey]?['name'] ?? 'مدينتك';
+    final now = DateTime.now();
 
-    prayers.forEach((id, info) async {
-      final timeParts = (info['time'] as String).split(':');
-      final hour = int.parse(timeParts[0]);
-      final minute = int.parse(timeParts[1]);
+    final List<Map<String, dynamic>> prayers = [
+      {'id': 1, 'name': 'الفجر', 'time': prayerTimes.fajr},
+      {'id': 2, 'name': 'الظهر', 'time': prayerTimes.dhuhr},
+      {'id': 3, 'name': 'العصر', 'time': prayerTimes.asr},
+      {'id': 4, 'name': 'المغرب', 'time': prayerTimes.maghrib},
+      {'id': 5, 'name': 'العشاء', 'time': prayerTimes.isha},
+    ];
 
-      var scheduledDate = DateTime(
-        now.year,
-        now.month,
-        now.day,
-        hour,
-        minute,
-      );
+    for (var prayer in prayers) {
+      DateTime scheduledDate = prayer['time'];
 
       if (scheduledDate.isBefore(now)) {
         scheduledDate = scheduledDate.add(const Duration(days: 1));
       }
 
       await NotificationService.scheduleNotification(
-        id: id,
-        title: 'حان الآن موعد صلاة ${info['name']}',
-        body: 'الله أكبر، حان وقت أذان صلاة ${info['name']} في $cityName',
+        id: prayer['id'],
+        title: 'حان الآن موعد صلاة ${prayer['name']}',
+        body: 'الله أكبر، حان وقت أذان صلاة ${prayer['name']} في $cityName',
         scheduledTime: scheduledDate,
       );
 
-      if (info['name'] == 'الظهر') {
+      if (prayer['name'] == 'الظهر') {
         await NotificationService.scheduleFridayReminder(scheduledDate);
       }
-    });
+    }
   }
 
   @override
@@ -214,13 +166,6 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
         centerTitle: true,
         backgroundColor: Colors.transparent,
         elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: fetchPrayerTimes,
-            tooltip: 'تحديث',
-          ),
-        ],
       ),
       body: SafeArea(
         child: Padding(
@@ -266,7 +211,7 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
                               _selectedCityKey = newValue;
                             });
                             _saveCity(newValue);
-                            fetchPrayerTimes();
+                            _calculatePrayerTimes();
                           }
                         },
                       ),
@@ -276,126 +221,99 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
               ),
               const SizedBox(height: 16),
 
-              // بطاقة التاريخ الهجري والميلادي
-              if (_hijriDate.isNotEmpty)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF10B981), Color(0xFF059669)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
+              // بطاقة التاريخ
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF10B981), Color(0xFF059669)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF10B981).withOpacity(0.3),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
                     ),
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF10B981).withOpacity(0.3),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      Text(
-                        _hijriDate,
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _gregorianDate,
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.white.withOpacity(0.9),
-                        ),
-                      ),
-                    ],
-                  ),
+                  ],
                 ),
+                child: Column(
+                  children: [
+                    const Text(
+                      'مواقيت اليوم',
+                      style: TextStyle(fontSize: 16, color: Colors.white70),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _gregorianDate,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               const SizedBox(height: 20),
 
               // قائمة مواقيت الصلاة
               Expanded(
-                child: _isLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : _errorMessage != null
-                        ? Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(Icons.error_outline,
-                                    size: 48, color: Colors.redAccent),
-                                const SizedBox(height: 8),
-                                Text(_errorMessage!,
-                                    style:
-                                        const TextStyle(color: Colors.white70)),
-                                const SizedBox(height: 16),
-                                ElevatedButton(
-                                  onPressed: fetchPrayerTimes,
-                                  child: const Text('إعادة المحاولة'),
-                                )
-                              ],
-                            ),
-                          )
-                        : ListView.separated(
-                            itemCount: _prayerTimes.length,
-                            separatorBuilder: (context, index) =>
-                                const SizedBox(height: 10),
-                            itemBuilder: (context, index) {
-                              final name = _prayerTimes.keys.elementAt(index);
-                              final time =
-                                  _prayerTimes.values.elementAt(index);
-                              final isSunrise = name == 'الشروق';
+                child: ListView.separated(
+                  itemCount: _prayerTimes.length,
+                  separatorBuilder: (context, index) =>
+                      const SizedBox(height: 10),
+                  itemBuilder: (context, index) {
+                    final name = _prayerTimes.keys.elementAt(index);
+                    final time = _prayerTimes.values.elementAt(index);
+                    final isSunrise = name == 'الشروق';
 
-                              return Container(
-                                decoration: BoxDecoration(
-                                  color: Theme.of(context).colorScheme.surface,
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(
-                                    color: Colors.white.withOpacity(0.05),
-                                  ),
-                                ),
-                                child: ListTile(
-                                  leading: CircleAvatar(
-                                    backgroundColor: isSunrise
-                                        ? Colors.orange.withOpacity(0.2)
-                                        : const Color(0xFF10B981)
-                                            .withOpacity(0.2),
-                                    child: Icon(
-                                      isSunrise
-                                          ? Icons.wb_sunny
-                                          : Icons.access_time_filled,
-                                      color: isSunrise
-                                          ? Colors.orange
-                                          : const Color(0xFF10B981),
-                                    ),
-                                  ),
-                                  title: Text(
-                                    name,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 18,
-                                    ),
-                                  ),
-                                  trailing: Text(
-                                    time,
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w600,
-                                      color: isSunrise
-                                          ? Colors.orange
-                                          : const Color(0xFF10B981),
-                                    ),
-                                  ),
-                                ),
-                              );
-                            },
+                    return Container(
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.surface,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.05),
+                        ),
+                      ),
+                      child: ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: isSunrise
+                              ? Colors.orange.withOpacity(0.2)
+                              : const Color(0xFF10B981).withOpacity(0.2),
+                          child: Icon(
+                            isSunrise
+                                ? Icons.wb_sunny
+                                : Icons.access_time_filled,
+                            color: isSunrise
+                                ? Colors.orange
+                                : const Color(0xFF10B981),
                           ),
+                        ),
+                        title: Text(
+                          name,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18,
+                          ),
+                        ),
+                        trailing: Text(
+                          time,
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                            color: isSunrise
+                                ? Colors.orange
+                                : const Color(0xFF10B981),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
               ),
             ],
           ),
