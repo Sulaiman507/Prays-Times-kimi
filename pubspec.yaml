@@ -1,5 +1,5 @@
 name: prayer_times_app
-description: تطبيق مواقيت صلاة جميل ومتكامل
+description: تطبيق مواقيت صلاة يعمل بدون إنترنت
 
 publish_to: 'none'
 
@@ -14,13 +14,13 @@ dependencies:
   flutter_localizations:
     sdk: flutter
 
-  # API & Networking
-  http: ^1.2.0
+  # Offline Prayer Calculation Library
+  adhan: ^2.0.0
 
   # Local Storage
   shared_preferences: ^2.2.2
 
-  # Date & Time formatting (ترك الإصدار لتجنب التعارض مع flutter_localizations)
+  # Date & Time formatting
   intl: any
 
   # Beautiful Fonts
