@@ -171,7 +171,7 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
           ),
         ),
         Column(
-          mainAxisSize: MinAxisSize.min,
+          mainAxisSize: MainAxisSize.min, // تم تصحيح الخطأ هنا
           children: [
             Text(
               'متبقي على صلاة الظهر',
@@ -295,7 +295,7 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisSize: MainAxisSize.min, // تم تصحيح الخطأ هنا أيضاً
           children: [
             Icon(icon, color: isSelected ? Colors.amber : Colors.white38),
             const SizedBox(height: 4),
