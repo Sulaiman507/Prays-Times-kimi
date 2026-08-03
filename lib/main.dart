@@ -1,15 +1,18 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'notification_service.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'notification_service.dart'; // تأكد من مطابقة اسم الملف لديك
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // 1. تهيئة خدمة الإشعارات
+  
+  // تهيئة الإشعارات والمناطق الزمنية
   await NotificationService.init();
-
-  // 2. طلب الصلاحيات
-  await NotificationService.requestPermissions();
-
+  
   runApp(const PrayerTimesApp());
 }
 
@@ -21,20 +24,28 @@ class PrayerTimesApp extends StatelessWidget {
     return MaterialApp(
       title: 'مواقيت الصلاة',
       debugShowCheckedModeBanner: false,
+      // ضبط اللغة العربية والاتجاه من اليمين إلى اليسار
       locale: const Locale('ar', 'SA'),
       supportedLocales: const [
         Locale('ar', 'SA'),
       ],
-      builder: (context, child) {
-        return Directionality(
-          textDirection: TextDirection.rtl,
-          child: child!,
-        );
-      },
-      theme: ThemeData(
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      themeMode: ThemeMode.dark,
+      darkTheme: ThemeData(
         brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF0B121E),
-        fontFamily: 'Tajawal',
+        scaffoldBackgroundColor: const Color(0xFF0F172A),
+        primaryColor: const Color(0xFF10B981),
+        colorScheme: const ColorScheme.dark(
+          primary: Color(0xFF10B981),
+          secondary: Color(0xFF06B6D4),
+          surface: Color(0xFF1E293B),
+        ),
+        textTheme: GoogleFonts.cairoTextTheme(ThemeData.dark().textTheme),
+        useMaterial3: true,
       ),
       home: const PrayerTimesScreen(),
     );
@@ -49,320 +60,319 @@ class PrayerTimesScreen extends StatefulWidget {
 }
 
 class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
-  int _selectedIndex = 0;
+  String _selectedCity = 'Jeddah';
+  String _selectedCountry = 'Saudi Arabia';
+  
+  bool _isLoading = true;
+  String? _errorMessage;
+  Map<String, String> _prayerTimes = {};
+  String _hijriDate = '';
+  String _gregorianDate = '';
+
+  final Map<String, String> _citiesMap = {
+    'Jeddah': 'جدة',
+    'Makkah': 'مكة المكرمة',
+    'Madinah': 'المدينة المنورة',
+    'Riyadh': 'الرياض',
+    'Dammam': 'الدمام',
+  };
 
   @override
   void initState() {
     super.initState();
-    _scheduleNotifications();
+    _initializeApp();
   }
 
-  void _scheduleNotifications() async {
+  Future<void> _initializeApp() async {
+    // طلب صلاحيات الإشعارات على نظام أندرويد
+    await NotificationService.requestPermissions();
+    await _loadSavedCity();
+    await fetchPrayerTimes();
+  }
+
+  Future<void> _loadSavedCity() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _selectedCity = prefs.getString('saved_city') ?? 'Jeddah';
+    });
+  }
+
+  Future<void> _saveCity(String city) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('saved_city', city);
+  }
+
+  Future<void> fetchPrayerTimes() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final now = DateTime.now();
+      final url = Uri.parse(
+        'https://api.aladhan.com/v1/timingsByCity/${now.day}-${now.month}-${now.year}?city=$_selectedCity&country=$_selectedCountry&method=4',
+      );
+
+      final response = await http.get(url);
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final timings = data['data']['timings'];
+        final dateData = data['data']['date'];
+
+        setState(() {
+          _prayerTimes = {
+            'الفجر': timings['Fajr'],
+            'الشروق': timings['Sunrise'],
+            'الظهر': timings['Dhuhr'],
+            'العصر': timings['Asr'],
+            'المغرب': timings['Maghrib'],
+            'العشاء': timings['Isha'],
+          };
+          _hijriDate =
+              '${dateData['hijri']['day']} ${dateData['hijri']['month']['ar']} ${dateData['hijri']['year']} هـ';
+          _gregorianDate = dateData['readable'];
+          _isLoading = false;
+        });
+
+        // جدولة الإشعارات بعد جلب المواقيت بنجاح
+        await _scheduleNotifications(timings);
+      } else {
+        setState(() {
+          _errorMessage = 'تعذر جلب البيانات من الخادم';
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'تأكد من اتصالك بالإنترنت والتحقق من الإعدادات';
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _scheduleNotifications(Map<String, dynamic> timings) async {
     await NotificationService.cancelAll();
-    
-    // جدولة إشعار تجريبي يظهر بعد 5 ثوانٍ لتأكيد عمل الإشعارات
+
     final now = DateTime.now();
-    await NotificationService.scheduleNotification(
-      id: 99,
-      title: 'تنبيه الأذان 🕌',
-      body: 'حان الآن موعد صلاة العصر حسب التوقيت المحلي',
-      scheduledTime: now.add(const Duration(seconds: 5)),
-    );
+    final prayers = {
+      1: {'name': 'الفجر', 'time': timings['Fajr']},
+      2: {'name': 'الظهر', 'time': timings['Dhuhr']},
+      3: {'name': 'العصر', 'time': timings['Asr']},
+      4: {'name': 'المغرب', 'time': timings['Maghrib']},
+      5: {'name': 'العشاء', 'time': timings['Isha']},
+    };
+
+    prayers.forEach((id, info) async {
+      final timeParts = (info['time'] as String).split(':');
+      final hour = int.parse(timeParts[0]);
+      final minute = int.parse(timeParts[1]);
+
+      var scheduledDate = DateTime(
+        now.year,
+        now.month,
+        now.day,
+        hour,
+        minute,
+      );
+
+      // إذا مر وقت الصلاة اليوم، نجدولها ليوم غد
+      if (scheduledDate.isBefore(now)) {
+        scheduledDate = scheduledDate.add(const Duration(days: 1));
+      }
+
+      await NotificationService.scheduleNotification(
+        id: id,
+        title: 'حان الآن موعد صلاة ${info['name']}',
+        body: 'الله أكبر، حان وقت أذان صلاة ${info['name']} في ${_citiesMap[_selectedCity]}',
+        scheduledTime: scheduledDate,
+      );
+
+      // إذا كانت الصلاة هي صلاة الظهر، نقوم بجدولة تذكير الجمعة
+      if (info['name'] == 'الظهر') {
+        await NotificationService.scheduleFridayReminder(scheduledDate);
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        title: const Text('مواقيت الصلاة', style: TextStyle(fontWeight: FontWeight.bold)),
+        centerTitle: true,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: fetchPrayerTimes,
+            tooltip: 'تحديث',
+          ),
+        ],
+      ),
       body: SafeArea(
-        child: Column(
-          children: [
-            _buildHeader(),
-            Expanded(
-              child: SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Column(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            children: [
+              // اختيار المدينة
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.white12),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const SizedBox(height: 10),
-                    _buildHeroCard(),
-                    const SizedBox(height: 20),
-                    _buildPrayerGrid(),
-                    const SizedBox(height: 20),
+                    const Row(
+                      children: [
+                        Icon(Icons.location_on, color: Color(0xFF10B981)),
+                        SizedBox(width: 8),
+                        Text('المدينة:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                    DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: _selectedCity,
+                        icon: const Icon(Icons.keyboard_arrow_down),
+                        dropdownColor: Theme.of(context).colorScheme.surface,
+                        items: _citiesMap.entries.map((entry) {
+                          return DropdownMenuItem<String>(
+                            value: entry.key,
+                            child: Text(entry.value, style: const TextStyle(fontSize: 16)),
+                          );
+                        }).toList(),
+                        onChanged: (String? newValue) {
+                          if (newValue != null && newValue != _selectedCity) {
+                            setState(() {
+                              _selectedCity = newValue;
+                            });
+                            _saveCity(newValue);
+                            fetchPrayerTimes();
+                          }
+                        },
+                      ),
+                    ),
                   ],
                 ),
               ),
-            ),
-          ],
-        ),
-      ),
-      bottomNavigationBar: _buildBottomNavBar(),
-    );
-  }
+              const SizedBox(height: 16),
 
-  // الهيدر العلوي
-  Widget _buildHeader() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: const [
-              Text(
-                'مواقيت الصلاة',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-              SizedBox(height: 4),
-              Text(
-                'الأحد، 2 أغسطس',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.white54,
-                ),
-              ),
-            ],
-          ),
-          IconButton(
-            onPressed: () {},
-            icon: const Icon(Icons.search, size: 28, color: Colors.white),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // الكارت الأزرق الكبير
-  Widget _buildHeroCard() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF00B2FE), Color(0xFF008BE7)],
-          begin: Alignment.topRight,
-          end: Alignment.bottomLeft,
-        ),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF008BE7).withOpacity(0.3),
-            blurRadius: 15,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: const [
-              Text(
-                'جدة',
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-              Icon(Icons.favorite_border, color: Colors.white, size: 28),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'المملكة العربية السعودية',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.white.withOpacity(0.8), // تم تصحيح الخطأ هنا
-            ),
-          ),
-          const SizedBox(height: 25),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.25),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: const Text(
-              'الصلاة القادمة: العصر: 03:49 م',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // شبكة الصلوات
-  Widget _buildPrayerGrid() {
-    return GridView.count(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: 2,
-      crossAxisSpacing: 14,
-      mainAxisSpacing: 14,
-      childAspectRatio: 0.95,
-      children: [
-        _buildPrayerGridCard(
-          name: 'الفجر',
-          athan: '04:34 ص',
-          iqamah: '04:59 ص',
-          icon: Icons.wb_twilight_rounded,
-          isNext: false,
-        ),
-        _buildPrayerGridCard(
-          name: 'الشروق',
-          athan: '05:57 ص',
-          iqamah: null,
-          icon: Icons.wb_sunny_outlined,
-          isNext: false,
-        ),
-        _buildPrayerGridCard(
-          name: 'الظهر',
-          athan: '12:30 م',
-          iqamah: '12:50 م',
-          icon: Icons.wb_sunny,
-          isNext: false,
-        ),
-        _buildPrayerGridCard(
-          name: 'العصر',
-          athan: '03:49 م',
-          iqamah: '04:09 م',
-          icon: Icons.cloud_outlined,
-          isNext: true,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildPrayerGridCard({
-    required String name,
-    required String athan,
-    String? iqamah,
-    required IconData icon,
-    required bool isNext,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF151D2A),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isNext ? const Color(0xFFD97706) : Colors.transparent,
-          width: isNext ? 1.5 : 0,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              if (isNext)
+              // بطاقة التاريخ الهجري والملادي
+              if (_hijriDate.isNotEmpty)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFD97706).withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Text(
-                    'الصلاة القادمة',
-                    style: TextStyle(
-                      color: Color(0xFFF59E0B),
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF10B981), Color(0xFF059669)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF10B981).withOpacity(0.3),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
                   ),
-                )
-              else
-                const SizedBox(),
-              Icon(icon, color: Colors.lightBlueAccent, size: 24),
-            ],
-          ),
-          Text(
-            name,
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
-          ),
-          const Divider(color: Colors.white10, height: 1),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('الأذان', style: TextStyle(color: Colors.white38, fontSize: 12)),
-              Text(athan, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
-            ],
-          ),
-          if (iqamah != null)
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('الإقامة', style: TextStyle(color: Colors.white38, fontSize: 12)),
-                Text(iqamah, style: const TextStyle(color: Color(0xFF00B2FE), fontSize: 13, fontWeight: FontWeight.bold)),
-              ],
-            ),
-        ],
-      ),
-    );
-  }
+                  child: Column(
+                    children: [
+                      Text(
+                        _hijriDate,
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _gregorianDate,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.white.withOpacity(0.9),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 20),
 
-  // الشريط السفلي
-  Widget _buildBottomNavBar() {
-    return Container(
-      height: 75,
-      decoration: const BoxDecoration(
-        color: Color(0xFF0B121E),
-        border: Border(top: BorderSide(color: Colors.white10, width: 0.5)),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _navItem(0, Icons.home, 'مواقيت الصلاة'),
-          _navItem(1, Icons.favorite_border, 'المفضلة'),
-          _navItem(2, Icons.settings_outlined, 'الإعدادات'),
-        ],
-      ),
-    );
-  }
+              // قائمة مواقيت الصلاة
+              Expanded(
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _errorMessage != null
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.error_outline, size: 48, color: Colors.redAccent),
+                                const SizedBox(height: 8),
+                                Text(_errorMessage!, style: const TextStyle(color: Colors.white70)),
+                                const SizedBox(height: 16),
+                                ElevatedButton(
+                                  onPressed: fetchPrayerTimes,
+                                  child: const Text('إعادة المحاولة'),
+                                )
+                              ],
+                            ),
+                          )
+                        : ListView.separated(
+                            itemCount: _prayerTimes.length,
+                            separatorBuilder: (context, index) => const SizedBox(height: 10),
+                            itemBuilder: (context, index) {
+                              final name = _prayerTimes.keys.elementAt(index);
+                              final time = _prayerTimes.values.elementAt(index);
+                              final isSunrise = name == 'الشروق';
 
-  Widget _navItem(int index, IconData icon, String label) {
-    bool isSelected = _selectedIndex == index;
-    return GestureDetector(
-      onTap: () => setState(() => _selectedIndex = index),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF1E293B) : Colors.transparent,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              color: isSelected ? const Color(0xFF00B2FE) : Colors.white38,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                color: isSelected ? Colors.white : Colors.white38,
-                fontSize: 11,
+                              return Container(
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context).colorScheme.surface,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: Colors.white.withOpacity(0.05),
+                                  ),
+                                ),
+                                child: ListTile(
+                                  leading: CircleAvatar(
+                                    backgroundColor: isSunrise
+                                        ? Colors.orange.withOpacity(0.2)
+                                        : const Color(0xFF10B981).withOpacity(0.2),
+                                    child: Icon(
+                                      isSunrise ? Icons.wb_sunny : Icons.access_time_filled,
+                                      color: isSunrise ? Colors.orange : const Color(0xFF10B981),
+                                    ),
+                                  ),
+                                  title: Text(
+                                    name,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 18,
+                                    ),
+                                  ),
+                                  trailing: Text(
+                                    time,
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w600,
+                                      color: isSunrise ? Colors.orange : const Color(0xFF10B981),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
