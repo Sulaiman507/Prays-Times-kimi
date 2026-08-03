@@ -1,6 +1,5 @@
-name: prayer_times_app
-description: تطبيق مواقيت صلاة يعمل بدون إنترنت
-
+name: prays_times_kimi
+description: "A new Flutter project for prayer times."
 publish_to: 'none'
 
 version: 1.0.0+1
@@ -14,29 +13,20 @@ dependencies:
   flutter_localizations:
     sdk: flutter
 
-  # Offline Prayer Calculation Library
-  adhan: ^2.0.0
-
-  # Local Storage
-  shared_preferences: ^2.5.5
-
-  # Date & Time formatting
+  # المكتبات الأساسية
+  http: ^1.2.0
+  shared_preferences: ^2.2.2
   intl: any
+  google_fonts: ^6.1.0
+
+  # مكتبات الإشعارات والوقت
+  flutter_local_notifications: ^17.1.2
+  timezone: ^0.9.4
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^5.0.0
+  flutter_lints: ^3.0.0
 
 flutter:
   uses-material-design: true
-
-  # خطوط مضمّنة محلياً لتطبيق يعمل بالكامل بدون إنترنت
-  fonts:
-    - family: Cairo
-      fonts:
-        - asset: assets/fonts/Cairo-Regular.ttf
-        - asset: assets/fonts/Cairo-Medium.ttf
-          weight: 500
-        - asset: assets/fonts/Cairo-Bold.ttf
-          weight: 700
