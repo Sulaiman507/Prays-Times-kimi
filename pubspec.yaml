@@ -20,15 +20,15 @@ dependencies:
   # Local Storage
   shared_preferences: ^2.2.2
 
-  # Date & Time formatting
-  intl: ^0.20.2
+  # Date & Time formatting (ترك الإصدار لتجنب التعارض مع flutter_localizations)
+  intl: any
 
   # Beautiful Fonts
   google_fonts: ^6.1.0
 
   # Notifications & Timezone
   flutter_local_notifications: ^17.1.2
-  timezone: ^0.9.3
+  timezone: ^0.9.4
 
 dev_dependencies:
   flutter_test:
