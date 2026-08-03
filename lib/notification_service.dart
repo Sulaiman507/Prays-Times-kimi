@@ -6,7 +6,6 @@ class NotificationService {
   static final FlutterLocalNotificationsPlugin _notificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
-  // 1. تهيئة خدمة الإشعارات وتحديد المنطقة الزمنية
   static Future<void> init() async {
     tz.initializeTimeZones();
     tz.setLocalLocation(tz.getLocation('Asia/Riyadh'));
@@ -29,7 +28,6 @@ class NotificationService {
     await _notificationsPlugin.initialize(initializationSettings);
   }
 
-  // 2. طلب صلاحيات الإشعارات والمنبهات الدقيقة (مهم لأجهزة أندرويد 12 و13+ و iOS)
   static Future<void> requestPermissions() async {
     final androidImplementation = _notificationsPlugin
         .resolvePlatformSpecificImplementation<
@@ -41,7 +39,6 @@ class NotificationService {
     }
   }
 
-  // 3. جدولة إشعار الأذان لكل صلاة
   static Future<void> scheduleNotification({
     required int id,
     required String title,
@@ -50,7 +47,6 @@ class NotificationService {
   }) async {
     final tzTime = tz.TZDateTime.from(scheduledTime, tz.local);
 
-    // التأكد من أن وقت الإشعار في المستقبل ولم يمر بعد
     if (tzTime.isBefore(tz.TZDateTime.now(tz.local))) return;
 
     await _notificationsPlugin.zonedSchedule(
@@ -80,7 +76,6 @@ class NotificationService {
     );
   }
 
-  // 4. جدولة تذكير يوم الجمعة (قبل صلاة الجمعة بساعة)
   static Future<void> scheduleFridayReminder(DateTime dhuhrTime) async {
     if (dhuhrTime.weekday == DateTime.friday) {
       final reminderTime = dhuhrTime.subtract(const Duration(hours: 1));
@@ -114,7 +109,6 @@ class NotificationService {
     }
   }
 
-  // 5. إلغاء جميع الإشعارات
   static Future<void> cancelAll() async {
     await _notificationsPlugin.cancelAll();
   }
