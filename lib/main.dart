@@ -34,7 +34,7 @@ class PrayerTimesApp extends StatelessWidget {
       theme: ThemeData(
         brightness: Brightness.dark,
         scaffoldBackgroundColor: const Color(0xFF0B121E),
-        fontFamily: 'Tajawal', // أو الخط الافتراضي للنظام
+        fontFamily: 'Tajawal',
       ),
       home: const PrayerTimesScreen(),
     );
@@ -99,7 +99,7 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
     );
   }
 
-  // الهيدر العلوي: مواقيت الصلاة والأحد، 2 أغسطس
+  // الهيدر العلوي
   Widget _buildHeader() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
@@ -136,7 +136,7 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
     );
   }
 
-  // الكارت الأزرق الكبير العلوي
+  // الكارت الأزرق الكبير
   Widget _buildHeroCard() {
     return Container(
       width: double.infinity,
@@ -174,11 +174,11 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
             ],
           ),
           const SizedBox(height: 4),
-          const Text(
+          Text(
             'المملكة العربية السعودية',
             style: TextStyle(
               fontSize: 14,
-              color: Colors.white80,
+              color: Colors.white.withOpacity(0.8), // تم تصحيح الخطأ هنا
             ),
           ),
           const SizedBox(height: 25),
@@ -202,7 +202,7 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
     );
   }
 
-  // شبكة الصلوات (2 في كل صف)
+  // شبكة الصلوات
   Widget _buildPrayerGrid() {
     return GridView.count(
       shrinkWrap: true,
@@ -210,7 +210,7 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
       crossAxisCount: 2,
       crossAxisSpacing: 14,
       mainAxisSpacing: 14,
-      childAspectRatio: 1.05,
+      childAspectRatio: 0.95,
       children: [
         _buildPrayerGridCard(
           name: 'الفجر',
@@ -238,7 +238,7 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
           athan: '03:49 م',
           iqamah: '04:09 م',
           icon: Icons.cloud_outlined,
-          isNext: true, // الصلاة القادمة (إطار أصفر وبادج)
+          isNext: true,
         ),
       ],
     );
@@ -302,7 +302,7 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text('الأذان', style: TextStyle(color: Colors.white38, fontSize: 12)),
-              Text(athan, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+              Text(athan, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
             ],
           ),
           if (iqamah != null)
@@ -310,7 +310,7 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text('الإقامة', style: TextStyle(color: Colors.white38, fontSize: 12)),
-                Text(iqamah, style: const TextStyle(color: Color(0xFF00B2FE), fontSize: 14, fontWeight: FontWeight.bold)),
+                Text(iqamah, style: const TextStyle(color: Color(0xFF00B2FE), fontSize: 13, fontWeight: FontWeight.bold)),
               ],
             ),
         ],
@@ -318,7 +318,7 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
     );
   }
 
-  // الشريط السفلي الأصلي
+  // الشريط السفلي
   Widget _buildBottomNavBar() {
     return Container(
       height: 75,
