@@ -5,7 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'notification_service.dart'; // تأكد من مطابقة اسم الملف لديك
+import 'notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -110,11 +110,23 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
 
     try {
       final now = DateTime.now();
+      
+      // صياغة التاريخ بصيغة DD-MM-YYYY المطلوبة من الـ API
+      final String day = now.day.toString().padLeft(2, '0');
+      final String month = now.month.toString().padLeft(2, '0');
+      final String year = now.year.toString();
+
       final url = Uri.parse(
-        'https://api.aladhan.com/v1/timingsByCity/${now.day}-${now.month}-${now.year}?city=$_selectedCity&country=$_selectedCountry&method=4',
+        'https://api.aladhan.com/v1/timingsByCity/$day-$month-$year?city=$_selectedCity&country=$_selectedCountry&method=4',
       );
 
-      final response = await http.get(url);
+      final response = await http.get(
+        url,
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'Mozilla/5.0',
+        },
+      );
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -130,9 +142,14 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
             'المغرب': timings['Maghrib'],
             'العشاء': timings['Isha'],
           };
+          
+          final hijri = dateData['hijri'];
           _hijriDate =
-              '${dateData['hijri']['day']} ${dateData['hijri']['month']['ar']} ${dateData['hijri']['year']} هـ';
-          _gregorianDate = dateData['readable'];
+              '${hijri['day']} ${hijri['month']['ar']} ${hijri['year']} هـ';
+          
+          final gregorian = dateData['gregorian'];
+          _gregorianDate = '${gregorian['day']} ${gregorian['month']['en']} ${gregorian['year']} م';
+          
           _isLoading = false;
         });
 
@@ -140,7 +157,7 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
         await _scheduleNotifications(timings);
       } else {
         setState(() {
-          _errorMessage = 'تعذر جلب البيانات من الخادم';
+          _errorMessage = 'خطأ في الاستجابة من الخادم (رمز: ${response.statusCode})';
           _isLoading = false;
         });
       }
@@ -262,7 +279,7 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
               ),
               const SizedBox(height: 16),
 
-              // بطاقة التاريخ الهجري والملادي
+              // بطاقة التاريخ الهجري والميلادي
               if (_hijriDate.isNotEmpty)
                 Container(
                   width: double.infinity,
