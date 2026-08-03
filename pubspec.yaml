@@ -18,10 +18,10 @@ dependencies:
   adhan: ^2.0.0
 
   # Local Storage
-  shared_preferences: ^2.2.2
+  shared_preferences: ^2.5.5
 
   # Date & Time formatting
-  intl: any
+  intl: ^0.18.1
 
   # Beautiful Fonts
   google_fonts: ^6.1.0
