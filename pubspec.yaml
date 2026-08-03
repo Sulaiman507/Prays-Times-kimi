@@ -20,8 +20,8 @@ dependencies:
   # Local Storage
   shared_preferences: ^2.5.5
 
-  # Date & Time formatting
-  intl: ^0.18.1
+  # Date & Time formatting (تم التحديث إلى 0.20.2 لحل تعارض البناء)
+  intl: ^0.20.2
 
   # Beautiful Fonts
   google_fonts: ^6.1.0
