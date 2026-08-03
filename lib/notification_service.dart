@@ -34,7 +34,6 @@ class NotificationService {
             AndroidFlutterLocalNotificationsPlugin>();
 
     if (androidImplementation != null) {
-      // الدالة الصحيحة المتوافقة مع flutter_local_notifications 17.x
       await androidImplementation.requestNotificationsPermission();
       await androidImplementation.requestExactAlarmsPermission();
     }
@@ -71,7 +70,7 @@ class NotificationService {
           presentBadge: true,
         ),
       ),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      androidScheduleMode: AndroidScheduleMode.alarmClock,
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
     );
@@ -102,7 +101,7 @@ class NotificationService {
               presentAlert: true,
             ),
           ),
-          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+          androidScheduleMode: AndroidScheduleMode.alarmClock,
           uiLocalNotificationDateInterpretation:
               UILocalNotificationDateInterpretation.absoluteTime,
         );
