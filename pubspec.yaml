@@ -18,6 +18,7 @@ dependencies:
   shared_preferences: ^2.2.2
   intl: any
   google_fonts: ^6.1.0
+  adhan: ^2.0.0
 
   # مكتبات الإشعارات والوقت
   flutter_local_notifications: ^17.1.2
