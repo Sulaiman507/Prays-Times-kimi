@@ -9,10 +9,12 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:worldtime/worldtime.dart';
+import 'package:timezone/data/latest_all.dart' as tzdata;
+import 'package:timezone/timezone.dart' as tz;
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  tzdata.initializeTimeZones();
   runApp(const PrayerTimesApp());
 }
 
@@ -38,7 +40,6 @@ class PrayerTimesApp extends StatelessWidget {
       darkTheme: ThemeData(
         brightness: Brightness.dark,
         scaffoldBackgroundColor: const Color(0xFF0F172A),
-        primaryColor: const Color(0xFF10B981),
         colorScheme: const ColorScheme.dark(
           primary: Color(0xFF10B981),
           secondary: Color(0xFF06B6D4),
@@ -54,16 +55,6 @@ class PrayerTimesApp extends StatelessWidget {
   }
 }
 
-class _TimeZoneInfo {
-  const _TimeZoneInfo({
-    required this.name,
-    required this.offset,
-  });
-
-  final String name;
-  final Duration offset;
-}
-
 class PrayerTimesScreen extends StatefulWidget {
   const PrayerTimesScreen({super.key});
 
@@ -73,11 +64,11 @@ class PrayerTimesScreen extends StatefulWidget {
 
 class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
   String _cityName = 'جدة';
-  double _lat = 21.5433;
-  double _lng = 39.1728;
+  double _latitude = 21.5433;
+  double _longitude = 39.1728;
 
   String _timeZoneName = 'Asia/Riyadh';
-  Duration _utcOffset = const Duration(hours: 3);
+  late tz.Location _timeZoneLocation;
 
   Map<String, String> _prayerTimes = {};
   String _gregorianDate = '';
@@ -91,6 +82,9 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
   @override
   void initState() {
     super.initState();
+
+    _timeZoneLocation = tz.getLocation('Asia/Riyadh');
+
     _initializeApp();
   }
 
@@ -110,29 +104,33 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
     _calculatePrayerTimes();
 
     try {
-      final timeZoneInfo = await _fetchTimeZoneInfo(
-        _lat,
-        _lng,
+      final detectedTimeZone = await _fetchTimeZoneName(
+        _latitude,
+        _longitude,
       );
 
       if (!mounted) {
         return;
       }
 
-      setState(() {
-        _timeZoneName = timeZoneInfo.name;
-        _utcOffset = timeZoneInfo.offset;
-      });
+      final detectedLocation =
+          tz.getLocation(detectedTimeZone);
 
-      _calculatePrayerTimes();
+      if (_timeZoneName != detectedTimeZone) {
+        setState(() {
+          _timeZoneName = detectedTimeZone;
+          _timeZoneLocation = detectedLocation;
+        });
 
-      await _saveLocation(
-        _cityName,
-        _lat,
-        _lng,
-        _timeZoneName,
-        _utcOffset,
-      );
+        _calculatePrayerTimes();
+
+        await _saveLocation(
+          _cityName,
+          _latitude,
+          _longitude,
+          _timeZoneName,
+        );
+      }
     } catch (_) {
       _calculatePrayerTimes();
     }
@@ -141,47 +139,70 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
   Future<void> _loadSavedLocation() async {
     final prefs = await SharedPreferences.getInstance();
 
-    final savedOffsetMinutes =
-        prefs.getInt('saved_timezone_offset_minutes');
+    final savedCity =
+        prefs.getString('saved_city_name') ?? 'جدة';
+
+    final savedLatitude =
+        prefs.getDouble('saved_lat') ?? 21.5433;
+
+    final savedLongitude =
+        prefs.getDouble('saved_lng') ?? 39.1728;
+
+    final savedTimeZone =
+        prefs.getString('saved_timezone_name') ??
+            'Asia/Riyadh';
+
+    tz.Location savedLocation;
+
+    try {
+      savedLocation = tz.getLocation(savedTimeZone);
+    } catch (_) {
+      savedLocation = tz.getLocation('Asia/Riyadh');
+    }
 
     if (!mounted) {
       return;
     }
 
     setState(() {
-      _cityName = prefs.getString('saved_city_name') ?? 'جدة';
-      _lat = prefs.getDouble('saved_lat') ?? 21.5433;
-      _lng = prefs.getDouble('saved_lng') ?? 39.1728;
-
-      _timeZoneName =
-          prefs.getString('saved_timezone_name') ?? 'Asia/Riyadh';
-
-      _utcOffset = Duration(
-        minutes: savedOffsetMinutes ?? 180,
-      );
+      _cityName = savedCity;
+      _latitude = savedLatitude;
+      _longitude = savedLongitude;
+      _timeZoneName = savedTimeZone;
+      _timeZoneLocation = savedLocation;
     });
   }
 
   Future<void> _saveLocation(
-    String name,
+    String cityName,
     double latitude,
     double longitude,
     String timeZoneName,
-    Duration utcOffset,
   ) async {
     final prefs = await SharedPreferences.getInstance();
 
-    await prefs.setString('saved_city_name', name);
-    await prefs.setDouble('saved_lat', latitude);
-    await prefs.setDouble('saved_lng', longitude);
-    await prefs.setString('saved_timezone_name', timeZoneName);
-    await prefs.setInt(
-      'saved_timezone_offset_minutes',
-      utcOffset.inMinutes,
+    await prefs.setString(
+      'saved_city_name',
+      cityName,
+    );
+
+    await prefs.setDouble(
+      'saved_lat',
+      latitude,
+    );
+
+    await prefs.setDouble(
+      'saved_lng',
+      longitude,
+    );
+
+    await prefs.setString(
+      'saved_timezone_name',
+      timeZoneName,
     );
   }
 
-  Future<_TimeZoneInfo> _fetchTimeZoneInfo(
+  Future<String> _fetchTimeZoneName(
     double latitude,
     double longitude,
   ) async {
@@ -205,59 +226,41 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
     final decoded = jsonDecode(response.body);
 
     if (decoded is! Map<String, dynamic>) {
-      throw Exception('استجابة غير صالحة من خدمة التوقيت');
+      throw Exception('استجابة غير صالحة');
     }
 
-    final timeZoneName = decoded['timeZone'] as String?;
-    final dateTimeValue = decoded['dateTime'] as String?;
+    final timeZoneName = decoded['timeZone'];
 
-    if (timeZoneName == null ||
-        timeZoneName.isEmpty ||
-        dateTimeValue == null ||
-        dateTimeValue.isEmpty) {
-      throw Exception('بيانات المنطقة الزمنية ناقصة');
+    if (timeZoneName is! String ||
+        timeZoneName.trim().isEmpty) {
+      throw Exception('اسم المنطقة الزمنية غير موجود');
     }
 
-    final remoteLocalDateTime =
-        DateTime.tryParse(dateTimeValue);
+    final cleanTimeZoneName = timeZoneName.trim();
 
-    if (remoteLocalDateTime == null) {
-      throw Exception('تعذر قراءة الوقت المحلي للمدينة');
-    }
+    tz.getLocation(cleanTimeZoneName);
 
-    final remoteTimeAsUtc = DateTime.utc(
-      remoteLocalDateTime.year,
-      remoteLocalDateTime.month,
-      remoteLocalDateTime.day,
-      remoteLocalDateTime.hour,
-      remoteLocalDateTime.minute,
-      remoteLocalDateTime.second,
-    );
-
-    final currentUtcTime = DateTime.now().toUtc();
-
-    final approximateOffset =
-        remoteTimeAsUtc.difference(currentUtcTime);
-
-    final offsetMinutes =
-        (approximateOffset.inSeconds / 60).round();
-
-    return _TimeZoneInfo(
-      name: timeZoneName,
-      offset: Duration(minutes: offsetMinutes),
-    );
+    return cleanTimeZoneName;
   }
 
   void _calculatePrayerTimes() {
-    final localNow = DateTime.now().toUtc().add(_utcOffset);
+    if (!mounted) {
+      return;
+    }
+
+    final localDateTime =
+        tz.TZDateTime.now(_timeZoneLocation);
 
     final calculationDate = DateTime.utc(
-      localNow.year,
-      localNow.month,
-      localNow.day,
+      localDateTime.year,
+      localDateTime.month,
+      localDateTime.day,
     );
 
-    final coordinates = Coordinates(_lat, _lng);
+    final coordinates = Coordinates(
+      _latitude,
+      _longitude,
+    );
 
     final calculationParameters =
         CalculationMethodParameters.ummAlQura();
@@ -269,18 +272,21 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
       precision: false,
     );
 
-    final timeFormatter = DateFormat.jm('ar');
+    final formatter = DateFormat.jm('ar');
 
-    String formatPrayerTime(DateTime utcPrayerTime) {
-      final localPrayerTime =
-          utcPrayerTime.add(_utcOffset);
+    String formatPrayerTime(DateTime utcTime) {
+      final cityTime = tz.TZDateTime.from(
+        utcTime,
+        _timeZoneLocation,
+      );
 
-      return timeFormatter.format(localPrayerTime);
+      return formatter.format(cityTime);
     }
 
-    if (!mounted) {
-      return;
-    }
+    final dateFormatter = DateFormat(
+      'EEEE، d MMMM yyyy',
+      'ar',
+    );
 
     setState(() {
       _prayerTimes = {
@@ -292,81 +298,59 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
         'العشاء': formatPrayerTime(prayerTimes.isha),
       };
 
-      _gregorianDate = DateFormat(
-        'EEEE، d MMMM yyyy',
-        'ar',
-      ).format(localNow);
+      _gregorianDate = dateFormatter.format(
+        localDateTime,
+      );
     });
   }
 
-  Future<void> _applyLocation({
-    required String name,
+  Future<void> _changeLocation({
+    required String cityName,
     required double latitude,
     required double longitude,
     required String successMessage,
   }) async {
+    final timeZoneName = await _fetchTimeZoneName(
+      latitude,
+      longitude,
+    );
+
+    final timeZoneLocation =
+        tz.getLocation(timeZoneName);
+
     if (!mounted) {
       return;
     }
 
     setState(() {
-      _isLoading = true;
+      _cityName = cityName;
+      _latitude = latitude;
+      _longitude = longitude;
+      _timeZoneName = timeZoneName;
+      _timeZoneLocation = timeZoneLocation;
     });
 
-    try {
-      final timeZoneInfo = await _fetchTimeZoneInfo(
-        latitude,
-        longitude,
-      );
+    await _saveLocation(
+      cityName,
+      latitude,
+      longitude,
+      timeZoneName,
+    );
 
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _cityName = name;
-        _lat = latitude;
-        _lng = longitude;
-        _timeZoneName = timeZoneInfo.name;
-        _utcOffset = timeZoneInfo.offset;
-      });
-
-      await _saveLocation(
-        name,
-        latitude,
-        longitude,
-        timeZoneInfo.name,
-        timeZoneInfo.offset,
-      );
-
-      _calculatePrayerTimes();
-      _searchController.clear();
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(successMessage),
-          ),
-        );
-      }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'تعذر تحديد المنطقة الزمنية لهذه المدينة. '
-              'تحقق من اتصال الإنترنت وحاول مرة أخرى.',
-            ),
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+    if (!mounted) {
+      return;
     }
+
+    _calculatePrayerTimes();
+    _searchController.clear();
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(successMessage),
+        ),
+      );
   }
 
   Future<void> _searchCity(String query) async {
@@ -381,7 +365,8 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
     });
 
     try {
-      final locations = await _geocoding.locationFromAddress(
+      final locations =
+          await _geocoding.locationFromAddress(
         cleanQuery,
       );
 
@@ -391,22 +376,24 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
 
       final location = locations.first;
 
-      await _applyLocation(
-        name: cleanQuery,
+      await _changeLocation(
+        cityName: cleanQuery,
         latitude: location.latitude,
         longitude: location.longitude,
         successMessage: 'تم التبديل إلى: $cleanQuery',
       );
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'لم يتم العثور على المدينة. '
-              'اكتب اسم المدينة والدولة، مثل: جدة، السعودية',
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(
+              content: Text(
+                'لم يتم العثور على المدينة. '
+                'اكتب اسم المدينة والدولة، مثل: جدة، السعودية',
+              ),
             ),
-          ),
-        );
+          );
       }
     } finally {
       if (mounted) {
@@ -418,7 +405,7 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
   }
 
   Future<void> _getCurrentLocation() async {
-    if (!mounted || _isLoading) {
+    if (_isLoading) {
       return;
     }
 
@@ -434,24 +421,28 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
         throw Exception('خدمة الموقع غير مفعلة');
       }
 
-      var permission = await Geolocator.checkPermission();
+      var permission =
+          await Geolocator.checkPermission();
 
       if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
+        permission =
+            await Geolocator.requestPermission();
       }
 
       if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        throw Exception('لم يتم السماح باستخدام الموقع');
+          permission ==
+              LocationPermission.deniedForever) {
+        throw Exception('لم يتم السماح بالموقع');
       }
 
-      final position = await Geolocator.getCurrentPosition(
+      final position =
+          await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
         ),
       );
 
-      var detectedName = 'موقعي الحالي';
+      var detectedCity = 'موقعي الحالي';
 
       try {
         final placemarks =
@@ -463,31 +454,33 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
         if (placemarks.isNotEmpty) {
           final placemark = placemarks.first;
 
-          detectedName = placemark.locality ??
+          detectedCity = placemark.locality ??
               placemark.subAdministrativeArea ??
               placemark.administrativeArea ??
               'موقعي الحالي';
         }
       } catch (_) {
-        detectedName = 'موقعي الحالي';
+        detectedCity = 'موقعي الحالي';
       }
 
-      await _applyLocation(
-        name: detectedName,
+      await _changeLocation(
+        cityName: detectedCity,
         latitude: position.latitude,
         longitude: position.longitude,
-        successMessage: 'تم تحديد موقعك: $detectedName',
+        successMessage: 'تم تحديد موقعك: $detectedCity',
       );
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'تعذر تحديد موقعك. '
-              'تأكد من تفعيل GPS ومنح التطبيق صلاحية الموقع.',
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(
+              content: Text(
+                'تعذر تحديد موقعك. '
+                'تأكد من تفعيل GPS ومنح التطبيق صلاحية الموقع.',
+              ),
             ),
-          ),
-        );
+          );
       }
     } finally {
       if (mounted) {
@@ -496,18 +489,6 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
         });
       }
     }
-  }
-
-  String _formatUtcOffset(Duration offset) {
-    final totalMinutes = offset.inMinutes;
-    final sign = totalMinutes >= 0 ? '+' : '-';
-    final absoluteMinutes = totalMinutes.abs();
-    final hours = absoluteMinutes ~/ 60;
-    final minutes = absoluteMinutes % 60;
-
-    return 'UTC$sign'
-        '${hours.toString().padLeft(2, '0')}:'
-        '${minutes.toString().padLeft(2, '0')}';
   }
 
   @override
@@ -537,9 +518,11 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
                   Expanded(
                     child: TextField(
                       controller: _searchController,
-                      textInputAction: TextInputAction.search,
+                      textInputAction:
+                          TextInputAction.search,
                       decoration: InputDecoration(
-                        hintText: 'ابحث عن أي مدينة في العالم...',
+                        hintText:
+                            'ابحث عن أي مدينة في العالم...',
                         prefixIcon: const Icon(
                           Icons.search,
                           color: Color(0xFF10B981),
@@ -620,7 +603,9 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
                         children: [
                           Text(
                             'المدينة الحالية: $_cityName',
-                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                            overflow:
+                                TextOverflow.ellipsis,
                             style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -628,9 +613,10 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'المنطقة الزمنية: $_timeZoneName '
-                            '(${_formatUtcOffset(_utcOffset)})',
-                            overflow: TextOverflow.ellipsis,
+                            'المنطقة الزمنية: $_timeZoneName',
+                            maxLines: 1,
+                            overflow:
+                                TextOverflow.ellipsis,
                             style: const TextStyle(
                               fontSize: 12,
                               color: Colors.white70,
@@ -670,7 +656,7 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
                   boxShadow: [
                     BoxShadow(
                       color: const Color(0xFF10B981)
-                          .withOpacity(0.3),
+                          .withValues(alpha: 0.3),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),
@@ -712,10 +698,17 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
                             const SizedBox(height: 10),
                         itemBuilder: (context, index) {
                           final name =
-                              _prayerTimes.keys.elementAt(index);
+                              _prayerTimes.keys.elementAt(
+                            index,
+                          );
+
                           final time =
-                              _prayerTimes.values.elementAt(index);
-                          final isSunrise = name == 'الشروق';
+                              _prayerTimes.values.elementAt(
+                            index,
+                          );
+
+                          final isSunrise =
+                              name == 'الشروق';
 
                           return Container(
                             decoration: BoxDecoration(
@@ -724,20 +717,21 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
                                   BorderRadius.circular(16),
                               border: Border.all(
                                 color: Colors.white
-                                    .withOpacity(0.05),
+                                    .withValues(alpha: 0.05),
                               ),
                             ),
                             child: ListTile(
                               leading: CircleAvatar(
                                 backgroundColor: isSunrise
                                     ? Colors.orange
-                                        .withOpacity(0.2)
+                                        .withValues(alpha: 0.2)
                                     : const Color(0xFF10B981)
-                                        .withOpacity(0.2),
+                                        .withValues(alpha: 0.2),
                                 child: Icon(
                                   isSunrise
                                       ? Icons.wb_sunny
-                                      : Icons.access_time_filled,
+                                      : Icons
+                                          .access_time_filled,
                                   color: isSunrise
                                       ? Colors.orange
                                       : const Color(0xFF10B981),
