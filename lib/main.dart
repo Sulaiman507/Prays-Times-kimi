@@ -69,6 +69,8 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
   final TextEditingController _searchController =
       TextEditingController();
 
+  final Geocoding _geocoding = Geocoding();
+
   @override
   void initState() {
     super.initState();
@@ -126,6 +128,7 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
     final date = DateTime(now.year, now.month, now.day);
 
     final coordinates = Coordinates(_lat, _lng);
+
     final calculationParameters =
         CalculationMethodParameters.ummAlQura();
 
@@ -165,7 +168,9 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
     });
 
     try {
-      final locations = await locationFromAddress(cityQuery);
+      final locations = await _geocoding.locationFromAddress(
+        cityQuery,
+      );
 
       if (!mounted) {
         return;
@@ -260,7 +265,8 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
       final position =
           await Geolocator.getCurrentPosition();
 
-      final placemarks = await placemarkFromCoordinates(
+      final placemarks =
+          await _geocoding.placemarkFromCoordinates(
         position.latitude,
         position.longitude,
       );
@@ -362,19 +368,22 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
                           horizontal: 16,
                         ),
                         border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius:
+                              BorderRadius.circular(16),
                           borderSide: const BorderSide(
                             color: Colors.white12,
                           ),
                         ),
                         enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius:
+                              BorderRadius.circular(16),
                           borderSide: const BorderSide(
                             color: Colors.white12,
                           ),
                         ),
                         focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius:
+                              BorderRadius.circular(16),
                           borderSide: const BorderSide(
                             color: Color(0xFF10B981),
                           ),
@@ -395,7 +404,8 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
                       backgroundColor: surfaceColor,
                       padding: const EdgeInsets.all(12),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius:
+                            BorderRadius.circular(16),
                       ),
                     ),
                   ),
