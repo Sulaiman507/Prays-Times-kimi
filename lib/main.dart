@@ -4,6 +4,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:adhan/adhan.dart';
 import 'package:intl/intl.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -53,17 +55,15 @@ class PrayerTimesScreen extends StatefulWidget {
 }
 
 class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
-  String _selectedCityKey = 'Jeddah';
+  String _cityName = 'جدة';
+  double _lat = 21.5433;
+  double _lng = 39.1728;
+  
   Map<String, String> _prayerTimes = {};
   String _gregorianDate = '';
-
-  final Map<String, Map<String, dynamic>> _citiesData = {
-    'Jeddah': {'name': 'جدة', 'lat': 21.5433, 'lng': 39.1728},
-    'Makkah': {'name': 'مكة المكرمة', 'lat': 21.3891, 'lng': 39.8579},
-    'Madinah': {'name': 'المدينة المنورة', 'lat': 24.5247, 'lng': 39.5692},
-    'Riyadh': {'name': 'الرياض', 'lat': 24.7136, 'lng': 46.6753},
-    'Dammam': {'name': 'الدمام', 'lat': 26.4207, 'lng': 50.0888},
-  };
+  bool _isLoading = false;
+  
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
@@ -72,26 +72,28 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
   }
 
   Future<void> _initializeApp() async {
-    await _loadSavedCity();
+    await _loadSavedLocation();
     _calculatePrayerTimes();
   }
 
-  Future<void> _loadSavedCity() async {
+  Future<void> _loadSavedLocation() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-      _selectedCityKey = prefs.getString('saved_city') ?? 'Jeddah';
+      _cityName = prefs.getString('saved_city_name') ?? 'جدة';
+      _lat = prefs.getDouble('saved_lat') ?? 21.5433;
+      _lng = prefs.getDouble('saved_lng') ?? 39.1728;
     });
   }
 
-  Future<void> _saveCity(String cityKey) async {
+  Future<void> _saveLocation(String name, double lat, double lng) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('saved_city', cityKey);
+    await prefs.setString('saved_city_name', name);
+    await prefs.setDouble('saved_lat', lat);
+    await prefs.setDouble('saved_lng', lng);
   }
 
   void _calculatePrayerTimes() {
-    final cityInfo = _citiesData[_selectedCityKey] ?? _citiesData['Jeddah']!;
-    final coordinates = Coordinates(cityInfo['lat'], cityInfo['lng']);
-
+    final coordinates = Coordinates(_lat, _lng);
     final params = CalculationMethod.umm_al_qura.getParameters();
 
     final now = DateTime.now();
@@ -114,6 +116,80 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
     });
   }
 
+  // البحث عن أي مدينة في العالم
+  Future<void> _searchCity(String query) async {
+    if (query.trim().isEmpty) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      List<Location> locations = await locationFromAddress(query);
+      if (locations.isNotEmpty) {
+        final loc = locations.first;
+        setState(() {
+          _cityName = query;
+          _lat = loc.latitude;
+          _lng = loc.longitude;
+        });
+        await _saveLocation(query, loc.latitude, loc.longitude);
+        _calculatePrayerTimes();
+        _searchController.clear();
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('تم التبديل إلى: $query')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('لم يتم العثور على المدينة، جرب اسماً آخر')),
+        );
+      }
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  // الحصول على موقع المستخدم الحالي
+  Future<void> _getCurrentLocation() async {
+    setState(() => _isLoading = true);
+    try {
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
+        Position position = await Geolocator.getCurrentPosition();
+        List<Placemark> placemarks = await placemarkFromCoordinates(position.latitude, position.longitude);
+        
+        String detectedName = 'موقعي الحالي';
+        if (placemarks.isNotEmpty) {
+          detectedName = placemarks.first.locality ?? placemarks.first.administrativeArea ?? 'موقعي الحالي';
+        }
+
+        setState(() {
+          _cityName = detectedName;
+          _lat = position.latitude;
+          _lng = position.longitude;
+        });
+
+        await _saveLocation(detectedName, position.latitude, position.longitude);
+        _calculatePrayerTimes();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تعذر تحديد الموقع تلقائياً')),
+        );
+      }
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -129,53 +205,70 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
           padding: const EdgeInsets.all(16.0),
           child: Column(
             children: [
+              // حقل البحث عن مدينة + زر تحديد الموقع
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _searchController,
+                      decoration: InputDecoration(
+                        hintText: 'ابحث عن أي مدينة في العالم...',
+                        prefixIcon: const Icon(Icons.search, color: Color(0xFF10B981)),
+                        filled: true,
+                        fillColor: Theme.of(context).colorScheme.surface,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: const BorderSide(color: Colors.white12),
+                        ),
+                      ),
+                      onSubmitted: _searchCity,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    onPressed: _getCurrentLocation,
+                    icon: const Icon(Icons.my_location, color: Color(0xFF10B981)),
+                    style: IconButton.styleFrom(
+                      backgroundColor: Theme.of(context).colorScheme.surface,
+                      padding: const EdgeInsets.all(12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                  )
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // بطاقة اسم المدينة المختارة
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.surface,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(color: Colors.white12),
                 ),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Row(
-                      children: [
-                        Icon(Icons.location_on, color: Color(0xFF10B981)),
-                        SizedBox(width: 8),
-                        Text('المدينة:',
-                            style: TextStyle(
-                                fontSize: 16, fontWeight: FontWeight.bold)),
-                      ],
+                    const Icon(Icons.location_on, color: Color(0xFF10B981)),
+                    const SizedBox(width: 8),
+                    Text(
+                      'المدينة الحالية: $_cityName',
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     ),
-                    DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        value: _selectedCityKey,
-                        icon: const Icon(Icons.keyboard_arrow_down),
-                        dropdownColor: Theme.of(context).colorScheme.surface,
-                        items: _citiesData.entries.map((entry) {
-                          return DropdownMenuItem<String>(
-                            value: entry.key,
-                            child: Text(entry.value['name'],
-                                style: const TextStyle(fontSize: 16)),
-                          );
-                        }).toList(),
-                        onChanged: (String? newValue) {
-                          if (newValue != null && newValue != _selectedCityKey) {
-                            setState(() {
-                              _selectedCityKey = newValue;
-                            });
-                            _saveCity(newValue);
-                            _calculatePrayerTimes();
-                          }
-                        },
-                      ),
-                    ),
+                    if (_isLoading) ...[
+                      const Spacer(),
+                      const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF10B981)),
+                      )
+                    ]
                   ],
                 ),
               ),
               const SizedBox(height: 16),
+
+              // بطاقة التاريخ
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(16),
@@ -213,11 +306,12 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
                 ),
               ),
               const SizedBox(height: 20),
+
+              // قائمة الأوقات
               Expanded(
                 child: ListView.separated(
                   itemCount: _prayerTimes.length,
-                  separatorBuilder: (context, index) =>
-                      const SizedBox(height: 10),
+                  separatorBuilder: (context, index) => const SizedBox(height: 10),
                   itemBuilder: (context, index) {
                     final name = _prayerTimes.keys.elementAt(index);
                     final time = _prayerTimes.values.elementAt(index);
@@ -237,12 +331,8 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
                               ? Colors.orange.withOpacity(0.2)
                               : const Color(0xFF10B981).withOpacity(0.2),
                           child: Icon(
-                            isSunrise
-                                ? Icons.wb_sunny
-                                : Icons.access_time_filled,
-                            color: isSunrise
-                                ? Colors.orange
-                                : const Color(0xFF10B981),
+                            isSunrise ? Icons.wb_sunny : Icons.access_time_filled,
+                            color: isSunrise ? Colors.orange : const Color(0xFF10B981),
                           ),
                         ),
                         title: Text(
@@ -257,9 +347,7 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w600,
-                            color: isSunrise
-                                ? Colors.orange
-                                : const Color(0xFF10B981),
+                            color: isSunrise ? Colors.orange : const Color(0xFF10B981),
                           ),
                         ),
                       ),
