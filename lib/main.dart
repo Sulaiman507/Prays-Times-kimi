@@ -18,8 +18,85 @@ void main() {
   runApp(const PrayerTimesApp());
 }
 
-class PrayerTimesApp extends StatelessWidget {
+class PrayerTimesApp extends StatefulWidget {
   const PrayerTimesApp({super.key});
+
+  @override
+  State<PrayerTimesApp> createState() => _PrayerTimesAppState();
+}
+
+class _PrayerTimesAppState extends State<PrayerTimesApp> {
+  bool _is24Hour = false;
+  bool _isDarkMode = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAppSettings();
+  }
+
+  Future<void> _loadAppSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _is24Hour = prefs.getBool('is_24_hour') ?? false;
+      _isDarkMode = prefs.getBool('is_dark_mode') ?? true;
+    });
+  }
+
+  Future<void> _changeTimeFormat(bool value) async {
+    setState(() {
+      _is24Hour = value;
+    });
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('is_24_hour', value);
+  }
+
+  Future<void> _changeTheme(bool value) async {
+    setState(() {
+      _isDarkMode = value;
+    });
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('is_dark_mode', value);
+  }
+
+  ThemeData _buildDarkTheme() {
+    return ThemeData(
+      brightness: Brightness.dark,
+      scaffoldBackgroundColor: const Color(0xFF071A16),
+      colorScheme: const ColorScheme.dark(
+        primary: Color(0xFF35D399),
+        secondary: Color(0xFFE6B85C),
+        surface: Color(0xFF102B25),
+      ),
+      textTheme: GoogleFonts.cairoTextTheme(
+        ThemeData.dark().textTheme,
+      ),
+      useMaterial3: true,
+    );
+  }
+
+  ThemeData _buildLightTheme() {
+    return ThemeData(
+      brightness: Brightness.light,
+      scaffoldBackgroundColor: const Color(0xFFF1F8F5),
+      colorScheme: const ColorScheme.light(
+        primary: Color(0xFF087F5B),
+        secondary: Color(0xFFC08A16),
+        surface: Colors.white,
+      ),
+      textTheme: GoogleFonts.cairoTextTheme(
+        ThemeData.light().textTheme,
+      ),
+      useMaterial3: true,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -36,20 +113,17 @@ class PrayerTimesApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF071A16),
-        colorScheme: const ColorScheme.dark(
-          primary: Color(0xFF35D399),
-          secondary: Color(0xFFE6B85C),
-          surface: Color(0xFF102B25),
-        ),
-        textTheme: GoogleFonts.cairoTextTheme(
-          ThemeData.dark().textTheme,
-        ),
-        useMaterial3: true,
+      themeMode: _isDarkMode
+          ? ThemeMode.dark
+          : ThemeMode.light,
+      darkTheme: _buildDarkTheme(),
+      theme: _buildLightTheme(),
+      home: PrayerTimesScreen(
+        is24Hour: _is24Hour,
+        isDarkMode: _isDarkMode,
+        onTimeFormatChanged: _changeTimeFormat,
+        onThemeChanged: _changeTheme,
       ),
-      home: const PrayerTimesScreen(),
     );
   }
 }
@@ -73,18 +147,31 @@ class _PrayerTimeItem {
 }
 
 class PrayerTimesScreen extends StatefulWidget {
-  const PrayerTimesScreen({super.key});
+  const PrayerTimesScreen({
+    super.key,
+    required this.is24Hour,
+    required this.isDarkMode,
+    required this.onTimeFormatChanged,
+    required this.onThemeChanged,
+  });
+
+  final bool is24Hour;
+  final bool isDarkMode;
+  final ValueChanged<bool> onTimeFormatChanged;
+  final ValueChanged<bool> onThemeChanged;
 
   @override
   State<PrayerTimesScreen> createState() => _PrayerTimesScreenState();
 }
 
 class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
-  static const Color background = Color(0xFF071A16);
-  static const Color cardColor = Color(0xFF102B25);
+  static const Color darkBackground = Color(0xFF071A16);
+  static const Color darkCard = Color(0xFF102B25);
+  static const Color lightBackground = Color(0xFFF1F8F5);
+  static const Color lightCard = Colors.white;
   static const Color green = Color(0xFF35D399);
+  static const Color darkGreen = Color(0xFF087F5B);
   static const Color gold = Color(0xFFE6B85C);
-  static const Color mutedText = Color(0xFFA9C2BA);
 
   String _cityName = 'جدة';
   double _latitude = 21.5433;
@@ -106,10 +193,29 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
 
   final Geocoding _geocoding = Geocoding();
 
+  bool get _isDark => widget.isDarkMode;
+
+  Color get _background =>
+      _isDark ? darkBackground : lightBackground;
+
+  Color get _cardColor =>
+      _isDark ? darkCard : lightCard;
+
+  Color get _primaryColor =>
+      _isDark ? green : darkGreen;
+
+  Color get _mainText =>
+      _isDark ? Colors.white : const Color(0xFF10231D);
+
+  Color get _mutedText =>
+      _isDark ? const Color(0xFFA9C2BA) : const Color(0xFF6A8078);
+
   @override
   void initState() {
     super.initState();
+
     _timeZoneLocation = tz.getLocation('Asia/Riyadh');
+
     _initializeApp();
   }
 
@@ -280,7 +386,9 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
       precision: false,
     );
 
-    final formatter = DateFormat.jm('ar');
+    final formatter = widget.is24Hour
+        ? DateFormat('HH:mm', 'ar')
+        : DateFormat.jm('ar');
 
     DateTime toLocalTime(DateTime utcTime) {
       return tz.TZDateTime.from(
@@ -375,10 +483,10 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
         precision: false,
       );
 
-      final tomorrowFajr =
-          toLocalTime(tomorrowPrayerTimes.fajr);
+      nextPrayerTime = toLocalTime(
+        tomorrowPrayerTimes.fajr,
+      );
 
-      nextPrayerTime = tomorrowFajr;
       nextPrayerName = 'الفجر';
     }
 
@@ -593,7 +701,11 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
       return '--:--';
     }
 
-    return DateFormat.jm('ar').format(nextTime);
+    final formatter = widget.is24Hour
+        ? DateFormat('HH:mm', 'ar')
+        : DateFormat.jm('ar');
+
+    return formatter.format(nextTime);
   }
 
   String _formatRemainingTime() {
@@ -603,7 +715,9 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
       return '';
     }
 
-    final now = tz.TZDateTime.now(_timeZoneLocation);
+    final now =
+        tz.TZDateTime.now(_timeZoneLocation);
+
     final difference = nextTime.difference(now);
 
     if (difference.isNegative) {
@@ -620,49 +734,50 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
     return 'متبقي $hours ساعة و$minutes دقيقة';
   }
 
+  Future<void> _openSettings() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => SettingsPage(
+          is24Hour: widget.is24Hour,
+          isDarkMode: widget.isDarkMode,
+          onTimeFormatChanged:
+              widget.onTimeFormatChanged,
+          onThemeChanged: widget.onThemeChanged,
+        ),
+      ),
+    );
+
+    if (mounted) {
+      _calculatePrayerTimes();
+    }
+  }
+
   Widget _buildTopHeader() {
     return Row(
       children: [
         Expanded(
-          child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
-            children: [
-              Text(
-                'السلام عليكم',
-                style: TextStyle(
-                  color: mutedText,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                'مواقيت الصلاة',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 28,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
+          child: Text(
+            'مواقيت الصلاة',
+            style: TextStyle(
+              color: _mainText,
+              fontSize: 28,
+              fontWeight: FontWeight.w800,
+            ),
           ),
         ),
         Container(
           decoration: BoxDecoration(
-            color: cardColor,
+            color: _cardColor,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.08),
+              color: _mainText.withValues(alpha: 0.08),
             ),
           ),
           child: IconButton(
-            onPressed: _isLoading
-                ? null
-                : _calculatePrayerTimes,
-            icon: const Icon(
-              Icons.refresh_rounded,
-              color: green,
+            onPressed: _openSettings,
+            icon: Icon(
+              Icons.settings_rounded,
+              color: _primaryColor,
             ),
           ),
         ),
@@ -674,10 +789,10 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: cardColor,
+        color: _cardColor,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.08),
+          color: _mainText.withValues(alpha: 0.08),
         ),
       ),
       child: Column(
@@ -688,12 +803,12 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  color: green.withValues(alpha: 0.14),
+                  color: _primaryColor.withValues(alpha: 0.14),
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.location_on_rounded,
-                  color: green,
+                  color: _primaryColor,
                 ),
               ),
               const SizedBox(width: 12),
@@ -706,8 +821,8 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
                       _cityName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: _mainText,
                         fontSize: 17,
                         fontWeight: FontWeight.bold,
                       ),
@@ -717,8 +832,8 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
                       'المنطقة الزمنية: $_timeZoneName',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: mutedText,
+                      style: TextStyle(
+                        color: _mutedText,
                         fontSize: 11,
                       ),
                     ),
@@ -726,12 +841,12 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
                 ),
               ),
               if (_isLoading)
-                const SizedBox(
+                SizedBox(
                   width: 20,
                   height: 20,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    color: green,
+                    color: _primaryColor,
                   ),
                 ),
             ],
@@ -741,15 +856,16 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
             controller: _searchController,
             textInputAction: TextInputAction.search,
             onSubmitted: _searchCity,
+            style: TextStyle(color: _mainText),
             decoration: InputDecoration(
               hintText: 'ابحث عن مدينة أخرى...',
-              hintStyle: const TextStyle(
-                color: mutedText,
+              hintStyle: TextStyle(
+                color: _mutedText,
                 fontSize: 13,
               ),
-              prefixIcon: const Icon(
+              prefixIcon: Icon(
                 Icons.search_rounded,
-                color: green,
+                color: _primaryColor,
                 size: 21,
               ),
               suffixIcon: IconButton(
@@ -763,7 +879,7 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
                 ),
               ),
               filled: true,
-              fillColor: background,
+              fillColor: _background,
               contentPadding:
                   const EdgeInsets.symmetric(
                 horizontal: 14,
@@ -785,21 +901,26 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [
-            Color(0xFF1C7054),
-            Color(0xFF0D4033),
-          ],
+        gradient: LinearGradient(
+          colors: _isDark
+              ? const [
+                  Color(0xFF1C7054),
+                  Color(0xFF0D4033),
+                ]
+              : const [
+                  Color(0xFF0E9F6E),
+                  Color(0xFF087F5B),
+                ],
           begin: Alignment.topRight,
           end: Alignment.bottomLeft,
         ),
         borderRadius: BorderRadius.circular(26),
         border: Border.all(
-          color: green.withValues(alpha: 0.35),
+          color: Colors.white.withValues(alpha: 0.2),
         ),
         boxShadow: [
           BoxShadow(
-            color: green.withValues(alpha: 0.12),
+            color: _primaryColor.withValues(alpha: 0.18),
             blurRadius: 24,
             offset: const Offset(0, 10),
           ),
@@ -888,10 +1009,10 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
         vertical: 14,
       ),
       decoration: BoxDecoration(
-        color: cardColor,
+        color: _cardColor,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.08),
+          color: _mainText.withValues(alpha: 0.08),
         ),
       ),
       child: Row(
@@ -905,8 +1026,8 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
           Expanded(
             child: Text(
               _gregorianDate,
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: _mainText,
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
               ),
@@ -914,8 +1035,8 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
           ),
           Text(
             '$_currentPrayerName الآن',
-            style: const TextStyle(
-              color: green,
+            style: TextStyle(
+              color: _primaryColor,
               fontSize: 12,
               fontWeight: FontWeight.bold,
             ),
@@ -937,13 +1058,13 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
       ),
       decoration: BoxDecoration(
         color: isCurrent
-            ? green.withValues(alpha: 0.16)
-            : cardColor,
+            ? _primaryColor.withValues(alpha: 0.16)
+            : _cardColor,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: isCurrent
-              ? green.withValues(alpha: 0.65)
-              : Colors.white.withValues(alpha: 0.08),
+              ? _primaryColor.withValues(alpha: 0.65)
+              : _mainText.withValues(alpha: 0.08),
           width: isCurrent ? 1.3 : 1,
         ),
       ),
@@ -972,19 +1093,19 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
                   item.name,
                   style: TextStyle(
                     color: isCurrent
-                        ? green
-                        : Colors.white,
+                        ? _primaryColor
+                        : _mainText,
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
                 if (isCurrent)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 3),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 3),
                     child: Text(
                       'وقت الصلاة الحالية',
                       style: TextStyle(
-                        color: mutedText,
+                        color: _mutedText,
                         fontSize: 10,
                       ),
                     ),
@@ -996,8 +1117,8 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
             item.time,
             style: TextStyle(
               color: isCurrent
-                  ? green
-                  : Colors.white,
+                  ? _primaryColor
+                  : _mainText,
               fontSize: 19,
               fontWeight: FontWeight.w800,
             ),
@@ -1010,86 +1131,317 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: background,
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              Color(0xFF071A16),
-              Color(0xFF0A211C),
-              Color(0xFF071A16),
-            ],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
-        ),
-        child: SafeArea(
-          child: RefreshIndicator(
-            color: green,
-            backgroundColor: cardColor,
-            onRefresh: () async {
-              _calculatePrayerTimes();
-            },
-            child: ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(
-                18,
-                18,
-                18,
-                28,
-              ),
-              children: [
-                _buildTopHeader(),
-                const SizedBox(height: 20),
-                _buildLocationCard(),
-                const SizedBox(height: 16),
-                _buildNextPrayerCard(),
-                const SizedBox(height: 12),
-                _buildDateCard(),
-                const SizedBox(height: 24),
-                Row(
-                  children: [
-                    const Expanded(
-                      child: Text(
-                        'مواقيت اليوم',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 21,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ),
-                    Text(
-                      'حسب أم القرى',
+      backgroundColor: _background,
+      body: SafeArea(
+        child: RefreshIndicator(
+          color: _primaryColor,
+          backgroundColor: _cardColor,
+          onRefresh: () async {
+            _calculatePrayerTimes();
+          },
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(
+              18,
+              18,
+              18,
+              28,
+            ),
+            children: [
+              _buildTopHeader(),
+              const SizedBox(height: 20),
+              _buildLocationCard(),
+              const SizedBox(height: 16),
+              _buildNextPrayerCard(),
+              const SizedBox(height: 12),
+              _buildDateCard(),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'مواقيت اليوم',
                       style: TextStyle(
-                        color: mutedText,
-                        fontSize: 11,
+                        color: _mainText,
+                        fontSize: 21,
+                        fontWeight: FontWeight.w800,
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                if (_prayerItems.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.all(40),
-                    child: Center(
-                      child: CircularProgressIndicator(
-                        color: green,
-                      ),
-                    ),
-                  )
-                else
-                  ..._prayerItems.map(
-                    (item) => Padding(
-                      padding:
-                          const EdgeInsets.only(bottom: 10),
-                      child: _buildPrayerCard(item),
                     ),
                   ),
+                  Text(
+                    'حسب أم القرى',
+                    style: TextStyle(
+                      color: _mutedText,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              if (_prayerItems.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.all(40),
+                  child: Center(
+                    child: CircularProgressIndicator(
+                      color: _primaryColor,
+                    ),
+                  ),
+                )
+              else
+                ..._prayerItems.map(
+                  (item) => Padding(
+                    padding:
+                        const EdgeInsets.only(bottom: 10),
+                    child: _buildPrayerCard(item),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class SettingsPage extends StatefulWidget {
+  const SettingsPage({
+    super.key,
+    required this.is24Hour,
+    required this.isDarkMode,
+    required this.onTimeFormatChanged,
+    required this.onThemeChanged,
+  });
+
+  final bool is24Hour;
+  final bool isDarkMode;
+  final ValueChanged<bool> onTimeFormatChanged;
+  final ValueChanged<bool> onThemeChanged;
+
+  @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  late bool _is24Hour;
+  late bool _isDarkMode;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _is24Hour = widget.is24Hour;
+    _isDarkMode = widget.isDarkMode;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness ==
+        Brightness.dark;
+
+    final cardColor = isDark
+        ? const Color(0xFF102B25)
+        : Colors.white;
+
+    final background = isDark
+        ? const Color(0xFF071A16)
+        : const Color(0xFFF1F8F5);
+
+    final mainText = isDark
+        ? Colors.white
+        : const Color(0xFF10231D);
+
+    final mutedText = isDark
+        ? const Color(0xFFA9C2BA)
+        : const Color(0xFF6A8078);
+
+    final primaryColor = isDark
+        ? const Color(0xFF35D399)
+        : const Color(0xFF087F5B);
+
+    return Scaffold(
+      backgroundColor: background,
+      appBar: AppBar(
+        title: const Text(
+          'الإعدادات',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        centerTitle: true,
+        backgroundColor: Colors.transparent,
+        foregroundColor: mainText,
+        elevation: 0,
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(18),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: cardColor,
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(
+                color: mainText.withValues(alpha: 0.08),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: primaryColor.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(17),
+                  ),
+                  child: Icon(
+                    Icons.tune_rounded,
+                    color: primaryColor,
+                    size: 27,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'تخصيص التطبيق',
+                        style: TextStyle(
+                          color: mainText,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'اختر طريقة عرض الوقت والمظهر المناسب لك',
+                        style: TextStyle(
+                          color: mutedText,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
-        ),
+          const SizedBox(height: 24),
+          Text(
+            'إعدادات الوقت',
+            style: TextStyle(
+              color: primaryColor,
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Container(
+            decoration: BoxDecoration(
+              color: cardColor,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: mainText.withValues(alpha: 0.08),
+              ),
+            ),
+            child: SwitchListTile(
+              value: _is24Hour,
+              onChanged: (value) {
+                setState(() {
+                  _is24Hour = value;
+                });
+
+                widget.onTimeFormatChanged(value);
+              },
+              activeColor: primaryColor,
+              secondary: Icon(
+                Icons.access_time_rounded,
+                color: primaryColor,
+              ),
+              title: Text(
+                'نظام 24 ساعة',
+                style: TextStyle(
+                  color: mainText,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              subtitle: Text(
+                _is24Hour
+                    ? 'مثال: 19:01'
+                    : 'مثال: 7:01 م',
+                style: TextStyle(
+                  color: mutedText,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            'المظهر',
+            style: TextStyle(
+              color: primaryColor,
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Container(
+            decoration: BoxDecoration(
+              color: cardColor,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: mainText.withValues(alpha: 0.08),
+              ),
+            ),
+            child: SwitchListTile(
+              value: _isDarkMode,
+              onChanged: (value) {
+                setState(() {
+                  _isDarkMode = value;
+                });
+
+                widget.onThemeChanged(value);
+              },
+              activeColor: primaryColor,
+              secondary: Icon(
+                _isDarkMode
+                    ? Icons.dark_mode_rounded
+                    : Icons.light_mode_rounded,
+                color: _isDarkMode
+                    ? const Color(0xFFB69CFF)
+                    : const Color(0xFFE0A51A),
+              ),
+              title: Text(
+                'الوضع الليلي',
+                style: TextStyle(
+                  color: mainText,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              subtitle: Text(
+                _isDarkMode
+                    ? 'ألوان داكنة مريحة للعين'
+                    : 'ألوان فاتحة وواضحة',
+                style: TextStyle(
+                  color: mutedText,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 30),
+          Center(
+            child: Text(
+              'مواقيت الصلاة',
+              style: TextStyle(
+                color: mutedText,
+                fontSize: 12,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
