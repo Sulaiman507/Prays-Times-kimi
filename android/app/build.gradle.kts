@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "com.example.prays_times_kimi"
-    compileSdk = 34
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
