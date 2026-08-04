@@ -9,6 +9,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:worldtime/worldtime.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -85,6 +86,8 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
   final TextEditingController _searchController =
       TextEditingController();
 
+  final Geocoding _geocoding = Geocoding();
+
   @override
   void initState() {
     super.initState();
@@ -107,7 +110,10 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
     _calculatePrayerTimes();
 
     try {
-      final timeZoneInfo = await _fetchTimeZoneInfo(_lat, _lng);
+      final timeZoneInfo = await _fetchTimeZoneInfo(
+        _lat,
+        _lng,
+      );
 
       if (!mounted) {
         return;
@@ -146,8 +152,10 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
       _cityName = prefs.getString('saved_city_name') ?? 'جدة';
       _lat = prefs.getDouble('saved_lat') ?? 21.5433;
       _lng = prefs.getDouble('saved_lng') ?? 39.1728;
+
       _timeZoneName =
           prefs.getString('saved_timezone_name') ?? 'Asia/Riyadh';
+
       _utcOffset = Duration(
         minutes: savedOffsetMinutes ?? 180,
       );
@@ -156,16 +164,16 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
 
   Future<void> _saveLocation(
     String name,
-    double lat,
-    double lng,
+    double latitude,
+    double longitude,
     String timeZoneName,
     Duration utcOffset,
   ) async {
     final prefs = await SharedPreferences.getInstance();
 
     await prefs.setString('saved_city_name', name);
-    await prefs.setDouble('saved_lat', lat);
-    await prefs.setDouble('saved_lng', lng);
+    await prefs.setDouble('saved_lat', latitude);
+    await prefs.setDouble('saved_lng', longitude);
     await prefs.setString('saved_timezone_name', timeZoneName);
     await prefs.setInt(
       'saved_timezone_offset_minutes',
@@ -210,7 +218,8 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
       throw Exception('بيانات المنطقة الزمنية ناقصة');
     }
 
-    final remoteLocalDateTime = DateTime.tryParse(dateTimeValue);
+    final remoteLocalDateTime =
+        DateTime.tryParse(dateTimeValue);
 
     if (remoteLocalDateTime == null) {
       throw Exception('تعذر قراءة الوقت المحلي للمدينة');
@@ -226,6 +235,7 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
     );
 
     final currentUtcTime = DateTime.now().toUtc();
+
     final approximateOffset =
         remoteTimeAsUtc.difference(currentUtcTime);
 
@@ -262,7 +272,9 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
     final timeFormatter = DateFormat.jm('ar');
 
     String formatPrayerTime(DateTime utcPrayerTime) {
-      final localPrayerTime = utcPrayerTime.add(_utcOffset);
+      final localPrayerTime =
+          utcPrayerTime.add(_utcOffset);
+
       return timeFormatter.format(localPrayerTime);
     }
 
@@ -360,7 +372,7 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
   Future<void> _searchCity(String query) async {
     final cleanQuery = query.trim();
 
-    if (cleanQuery.isEmpty || !mounted) {
+    if (cleanQuery.isEmpty || _isLoading) {
       return;
     }
 
@@ -369,7 +381,9 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
     });
 
     try {
-      final locations = await locationFromAddress(cleanQuery);
+      final locations = await _geocoding.locationFromAddress(
+        cleanQuery,
+      );
 
       if (locations.isEmpty) {
         throw Exception('لم يتم العثور على المدينة');
@@ -404,7 +418,7 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
   }
 
   Future<void> _getCurrentLocation() async {
-    if (!mounted) {
+    if (!mounted || _isLoading) {
       return;
     }
 
@@ -432,7 +446,7 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
       }
 
       final position = await Geolocator.getCurrentPosition(
-        locationSettings: LocationSettings(
+        locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
         ),
       );
@@ -440,7 +454,8 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
       var detectedName = 'موقعي الحالي';
 
       try {
-        final placemarks = await placemarkFromCoordinates(
+        final placemarks =
+            await _geocoding.placemarkFromCoordinates(
           position.latitude,
           position.longitude,
         );
@@ -497,7 +512,8 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final surfaceColor = Theme.of(context).colorScheme.surface;
+    final surfaceColor =
+        Theme.of(context).colorScheme.surface;
 
     return Scaffold(
       appBar: AppBar(
@@ -536,19 +552,22 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
                           horizontal: 16,
                         ),
                         border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius:
+                              BorderRadius.circular(16),
                           borderSide: const BorderSide(
                             color: Colors.white12,
                           ),
                         ),
                         enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius:
+                              BorderRadius.circular(16),
                           borderSide: const BorderSide(
                             color: Colors.white12,
                           ),
                         ),
                         focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius:
+                              BorderRadius.circular(16),
                           borderSide: const BorderSide(
                             color: Color(0xFF10B981),
                           ),
@@ -570,7 +589,8 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
                       backgroundColor: surfaceColor,
                       padding: const EdgeInsets.all(12),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius:
+                            BorderRadius.circular(16),
                       ),
                     ),
                   ),
@@ -688,7 +708,7 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
                       )
                     : ListView.separated(
                         itemCount: _prayerTimes.length,
-                        separatorBuilder: (context, index) =>
+                        separatorBuilder: (_, __) =>
                             const SizedBox(height: 10),
                         itemBuilder: (context, index) {
                           final name =
