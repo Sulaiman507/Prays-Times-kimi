@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "com.example.prays_times_kimi"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 34
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -16,7 +16,7 @@ android {
     defaultConfig {
         applicationId = "com.example.prays_times_kimi"
         minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        targetSdk = 34
         versionCode = flutter.versionCode
         versionName = flutter.versionName
 
