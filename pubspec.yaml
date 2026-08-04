@@ -13,10 +13,10 @@ dependencies:
   flutter_localizations:
     sdk: flutter
 
-  # المكتبات الأساسية (بأحدث الإصدارات)
+  # المكتبات الأساسية
   http: ^1.2.0
   shared_preferences: ^2.2.2
-  intl: ^0.20.3
+  intl: any
   google_fonts: ^6.2.1
   adhan: ^2.0.0
 
