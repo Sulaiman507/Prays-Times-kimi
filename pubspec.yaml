@@ -1,33 +1,32 @@
 name: prays_times_kimi
-description: "A new Flutter project for prayer times."
-publish_to: 'none'
+description: "تطبيق مواقيت الصلاة"
+publish_to: "none"
 
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.0.0 <4.0.0'
+  sdk: ">=3.10.0 <4.0.0"
+  flutter: ">=3.38.0"
 
 dependencies:
   flutter:
     sdk: flutter
+
   flutter_localizations:
     sdk: flutter
 
-  # المكتبات الأساسية
-  http: ^1.2.0
-  shared_preferences: ^2.2.2
-  intl: any
-  google_fonts: ^6.2.1
-  adhan: ^2.0.0
-
-  # مكتبات البحث عن المدن والموقع
-  geocoding: ^3.0.0
-  geolocator: ^12.0.0
+  adhan_dart: ^2.0.1
+  geocoding: ^5.0.0
+  geolocator: ^14.0.3
+  google_fonts: ^8.2.1
+  intl: ^0.20.2
+  shared_preferences: ^2.5.5
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^4.0.0
+
+  flutter_lints: ^6.0.0
 
 flutter:
   uses-material-design: true
