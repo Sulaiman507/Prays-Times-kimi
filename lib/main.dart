@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
@@ -12,11 +14,46 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
-void main() {
+final FlutterLocalNotificationsPlugin notificationsPlugin =
+    FlutterLocalNotificationsPlugin();
+
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   tzdata.initializeTimeZones();
+  await _initializeNotifications();
   runApp(const PrayerTimesApp());
 }
+
+Future<void> _initializeNotifications() async {
+  const androidSettings = AndroidInitializationSettings('app_icon');
+  const settings = InitializationSettings(android: androidSettings);
+
+  await notificationsPlugin.initialize(settings: settings);
+
+  final android = notificationsPlugin.resolvePlatformSpecificImplementation<
+      AndroidFlutterLocalNotificationsPlugin>();
+  await android?.requestNotificationsPermission();
+
+  try {
+    final timezoneInfo = await FlutterTimezone.getLocalTimezone();
+    final identifier = timezoneInfo.identifier;
+    tz.setLocalLocation(tz.getLocation(identifier));
+  } catch (_) {
+    tz.setLocalLocation(tz.getLocation('Asia/Riyadh'));
+  }
+}
+
+const NotificationDetails _prayerNotificationDetails = NotificationDetails(
+  android: AndroidNotificationDetails(
+    'prayer_times_channel',
+    'مواقيت الصلاة',
+    channelDescription: 'تنبيهات الأذان والإقامة والشروق',
+    importance: Importance.max,
+    priority: Priority.high,
+    playSound: true,
+    enableVibration: true,
+  ),
+);
 
 class PrayerTimesApp extends StatefulWidget {
   const PrayerTimesApp({super.key});
@@ -136,6 +173,7 @@ class _PrayerTimeItem {
     required this.icon,
     required this.color,
     required this.isSunrise,
+    required this.iqamaTime,
   });
 
   final String name;
@@ -144,6 +182,7 @@ class _PrayerTimeItem {
   final IconData icon;
   final Color color;
   final bool isSunrise;
+  final DateTime? iqamaTime;
 }
 
 class PrayerTimesScreen extends StatefulWidget {
@@ -178,6 +217,13 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
   double _longitude = 39.1728;
 
   String _timeZoneName = 'Asia/Riyadh';
+  static const Map<String, int> _iqamaDelays = {
+    'الفجر': 20,
+    'الظهر': 10,
+    'العصر': 10,
+    'المغرب': 7,
+    'العشاء': 10,
+  };
   late tz.Location _timeZoneLocation;
 
   List<_PrayerTimeItem> _prayerItems = [];
@@ -357,6 +403,85 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
     return cleanName;
   }
 
+  Future<void> _scheduleNotifications(List<_PrayerTimeItem> items) async {
+    await notificationsPlugin.cancelAll();
+    var id = 100;
+    final today = tz.TZDateTime.now(_timeZoneLocation);
+
+    Future<void> scheduleDay(DateTime date) async {
+      final coordinates = Coordinates(_latitude, _longitude);
+      final parameters = CalculationMethodParameters.ummAlQura();
+      final times = PrayerTimes(
+        date: DateTime.utc(date.year, date.month, date.day),
+        coordinates: coordinates,
+        calculationParameters: parameters,
+        precision: false,
+      );
+
+      final events = <Map<String, dynamic>>[
+        {'name': 'الفجر', 'time': times.fajr},
+        {'name': 'الشروق', 'time': times.sunrise, 'sunrise': true},
+        {'name': 'الظهر', 'time': times.dhuhr},
+        {'name': 'العصر', 'time': times.asr},
+        {'name': 'المغرب', 'time': times.maghrib},
+        {'name': 'العشاء', 'time': times.isha},
+      ];
+
+      for (final event in events) {
+        final localTime = tz.TZDateTime.from(
+          event['time'] as DateTime,
+          _timeZoneLocation,
+        );
+        final name = event['name'] as String;
+        final isSunrise = event['sunrise'] == true;
+
+        await _scheduleNotification(
+          id: id++,
+          time: localTime,
+          title: isSunrise ? 'حان وقت الشروق' : 'حان الآن أذان $name',
+          body: isSunrise
+              ? 'نسأل الله لكم يوماً مباركاً'
+              : 'حان وقت صلاة $name في $_cityName',
+        );
+
+        if (!isSunrise) {
+          final delay = _iqamaDelays[name] ?? 10;
+          await _scheduleNotification(
+            id: id++,
+            time: localTime.add(Duration(minutes: delay)),
+            title: 'حان الآن وقت إقامة $name',
+            body: 'حان وقت إقامة صلاة $name',
+          );
+        }
+      }
+    }
+
+    await scheduleDay(today);
+    await scheduleDay(today.add(const Duration(days: 1)));
+  }
+
+  Future<void> _scheduleNotification({
+    required int id,
+    required tz.TZDateTime time,
+    required String title,
+    required String body,
+  }) async {
+    if (!time.isAfter(tz.TZDateTime.now(_timeZoneLocation))) {
+      return;
+    }
+
+    try {
+      await notificationsPlugin.zonedSchedule(
+        id: id,
+        scheduledDate: time,
+        notificationDetails: _prayerNotificationDetails,
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        title: title,
+        body: body,
+      );
+    } catch (_) {}
+  }
+
   void _calculatePrayerTimes() {
     if (!mounted) {
       return;
@@ -413,6 +538,9 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
         icon: icon,
         color: color,
         isSunrise: isSunrise,
+        iqamaTime: isSunrise
+            ? null
+            : localTime.add(Duration(minutes: _iqamaDelays[name] ?? 10)),
       );
     }
 
@@ -508,6 +636,7 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
         'ar',
       ).format(localNow);
     });
+    _scheduleNotifications(items);
   }
 
   Future<void> _changeLocation({
@@ -1113,15 +1242,27 @@ class _PrayerTimesScreenState extends State<PrayerTimesScreen> {
               ],
             ),
           ),
-          Text(
-            item.time,
-            style: TextStyle(
-              color: isCurrent
-                  ? _primaryColor
-                  : _mainText,
-              fontSize: 19,
-              fontWeight: FontWeight.w800,
-            ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                item.time,
+                style: TextStyle(
+                  color: isCurrent ? _primaryColor : _mainText,
+                  fontSize: 19,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              if (!item.isSunrise && item.iqamaTime != null)
+                Text(
+                  'الإقامة ${DateFormat(widget.is24Hour ? 'HH:mm' : 'jm', 'ar').format(item.iqamaTime!)}',
+                  style: TextStyle(
+                    color: _mutedText,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+            ],
           ),
         ],
       ),
