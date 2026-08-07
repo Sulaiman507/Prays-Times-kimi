@@ -1,34 +1,52 @@
-name: prays_times_kimi
-description: "تطبيق مواقيت الصلاة"
-publish_to: "none"
-
+name: prayer_times_app
+description: A beautiful prayer times application with Umm al-Qura calculation method.
+publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: ">=3.10.0 <4.0.0"
-  flutter: ">=3.38.0"
+  sdk: '>=3.3.0 <4.0.0'
+  flutter: '>=3.19.0'
 
 dependencies:
   flutter:
     sdk: flutter
-
   flutter_localizations:
     sdk: flutter
 
-  adhan_dart: ^2.0.1
-  geocoding: ^5.0.0
-  geolocator: ^14.0.3
-  google_fonts: ^8.2.1
-  http: ^1.6.0
-  intl: ^0.20.2
-  shared_preferences: ^2.5.5
-  timezone: ^0.11.1
+  # State Management
+  provider: ^6.1.2
+
+  # Local Storage
+  shared_preferences: ^2.3.4
+
+  # Internationalization
+  intl: ^0.19.0
+
+  # Animations
+  flutter_animate: ^4.5.2
+
+  # UI Effects
+  shimmer: ^3.0.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-
-  flutter_lints: ^6.0.0
+  flutter_lints: ^5.0.0
 
 flutter:
   uses-material-design: true
+  generate: false
+
+  fonts:
+    - family: Cairo
+      fonts:
+        - asset: fonts/Cairo-Regular.ttf
+        - asset: fonts/Cairo-Bold.ttf
+          weight: 700
+        - asset: fonts/Cairo-Light.ttf
+          weight: 300
+    - family: Amiri
+      fonts:
+        - asset: fonts/Amiri-Regular.ttf
+        - asset: fonts/Amiri-Bold.ttf
+          weight: 700
